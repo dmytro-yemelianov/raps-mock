@@ -25,4 +25,3 @@ async fn aps_repo_parses_and_builds_router() {
     let server = MockServer::new(config).await;
     assert!(server.is_ok());
 }
-

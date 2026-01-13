@@ -12,6 +12,10 @@ use std::sync::LazyLock;
 static PATH_PARAM_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{([^}]+)\}").expect("Invalid path param regex"));
 
+/// Regex to find camelCase boundaries for conversion to snake_case
+static CAMEL_CASE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([a-z])([A-Z])").expect("Invalid camelCase regex"));
+
 /// Parser for OpenAPI 3.0 specifications
 pub struct OpenApiParser;
 
@@ -139,9 +143,19 @@ impl OpenApiParser {
     }
 
     /// Convert OpenAPI path pattern to Axum-compatible pattern
-    /// e.g., /buckets/{bucketKey} -> /buckets/:bucketKey
+    /// e.g., /buckets/{bucketKey} -> /buckets/:bucket_key
+    /// Normalizes parameter names to snake_case to avoid Axum routing conflicts
     fn convert_path_to_pattern(path: &str) -> String {
         // OpenAPI uses {param}, Axum uses :param
-        PATH_PARAM_REGEX.replace_all(path, ":$1").to_string()
+        // Also normalize camelCase to snake_case to avoid conflicts like :hubId vs :hub_id
+        PATH_PARAM_REGEX
+            .replace_all(path, |caps: &regex::Captures| {
+                let param_name = &caps[1];
+                let snake_case = CAMEL_CASE_REGEX
+                    .replace_all(param_name, "${1}_${2}")
+                    .to_lowercase();
+                format!(":{}", snake_case)
+            })
+            .to_string()
     }
 }

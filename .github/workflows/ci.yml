@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -16,7 +19,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
           components: rustfmt, clippy
 
       - name: Cargo cache
@@ -26,10 +28,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose
 
       - name: Test
-        run: cargo test --all-features --verbose
+        run: cargo test --verbose
 
   aps-openapi-smoke:
     name: APS OpenAPI Smoke
@@ -40,8 +45,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2

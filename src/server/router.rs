@@ -209,7 +209,7 @@ fn register_hardcoded_routes(
     let oss_state = state.clone();
     router = add_route(
         router,
-        "/oss/v2/buckets/:bucketKey/objects",
+        "/oss/v2/buckets/:bucket_key/objects",
         HttpMethod::Get,
         get(move |Path(bucket_key): Path<String>| {
             let state_inner = oss_state.clone();
@@ -295,7 +295,7 @@ fn register_hardcoded_routes(
     let dm_state = state.clone();
     router = add_route(
         router,
-        "/project/v1/hubs/:hubId",
+        "/project/v1/hubs/:hub_id",
         HttpMethod::Get,
         get(move |Path(hub_id): Path<String>| {
             let state_inner = dm_state.clone();
@@ -351,7 +351,7 @@ fn register_hardcoded_routes(
     let dm_state = state.clone();
     router = add_route(
         router,
-        "/project/v1/hubs/:hubId/projects",
+        "/project/v1/hubs/:hub_id/projects",
         HttpMethod::Get,
         get(move |Path(hub_id): Path<String>| {
             let state_inner = dm_state.clone();
@@ -516,7 +516,7 @@ fn register_hardcoded_routes(
     let issues_state = state.clone();
     router = add_route(
         router,
-        "/construction/issues/v1/projects/:projectId/issues",
+        "/construction/issues/v1/projects/:project_id/issues",
         HttpMethod::Get,
         get(move |Path(project_id): Path<String>| {
             let state_inner = issues_state.clone();
@@ -554,7 +554,7 @@ fn register_hardcoded_routes(
     let issues_state = state.clone();
     router = add_route(
         router,
-        "/construction/issues/v1/projects/:projectId/issues",
+        "/construction/issues/v1/projects/:project_id/issues",
         HttpMethod::Post,
         post(
             move |Path(project_id): Path<String>, Json(body_value): Json<Value>| {
@@ -711,7 +711,7 @@ fn register_hardcoded_routes(
     let webhooks_state = state.clone();
     router = add_route(
         router,
-        "/webhooks/v1/systems/:system/events/:event/hooks/:hookId",
+        "/webhooks/v1/systems/:system/events/:event/hooks/:hook_id",
         HttpMethod::Delete,
         delete(
             move |Path((_system, _event, hook_id)): Path<(String, String, String)>| {

@@ -1,0 +1,84 @@
+[package]
+name = "raps-mock"
+version = "0.1.0"
+edition = "2024"
+authors = ["Dmytro Yemelianov"]
+license = "Apache-2.0"
+repository = "https://github.com/dmytro-yemelianov/raps.git"
+homepage = "https://rapscli.xyz"
+documentation = "https://rapscli.xyz/docs"
+rust-version = "1.88"
+description = "Mock server for Autodesk Platform Services (APS) APIs - auto-generated from OpenAPI specs"
+keywords = ["autodesk", "aps", "mock", "testing", "api"]
+categories = ["development-tools::testing", "web-programming::http-server"]
+
+[lib]
+name = "raps_mock"
+path = "src/lib.rs"
+
+[[bin]]
+name = "raps-mock"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP server framework
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+hyper = { version = "1.5", features = ["full"] }
+
+# Async runtime
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "net"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# CLI framework
+clap = { version = "4.5", features = ["derive"] }
+
+# State management
+dashmap = "6.1"
+uuid = { version = "1.6", features = ["v4"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Random number generation
+rand = "0.8"
+
+# Base64 encoding
+base64 = "0.21"
+
+# Regex for path matching
+regex = "1.10"
+
+# JSON Schema validation
+
+
+# Optional: Integration with raps-kernel
+# raps-kernel = { path = "../raps/raps-kernel" }
+
+[dev-dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
+tempfile = "3.14"
+
+[features]
+# Enables CI smoke test against the external APS OpenAPI repo
+aps_ci = []
+
+#[profile.dev]
+# Keep default debug symbols for better DX
+
+#[profile.test]
+# Keep default debug symbols for test backtraces

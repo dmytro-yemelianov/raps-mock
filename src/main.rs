@@ -67,7 +67,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let server = MockServer::new(config).await?;
     let addr = format!("{}:{}", cli.host, cli.port);
-    info!("Server listening on {}", addr);
     server.start(&addr).await?;
 
     Ok(())

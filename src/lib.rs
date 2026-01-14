@@ -13,7 +13,9 @@ pub mod middleware;
 pub mod openapi;
 pub mod server;
 pub mod state;
+pub mod testing;
 
 pub use config::{MockMode, MockServerConfig};
 pub use error::{MockError, Result};
 pub use server::MockServer;
+pub use testing::TestServer;

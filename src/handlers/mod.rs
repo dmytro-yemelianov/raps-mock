@@ -3,6 +3,7 @@
 
 pub mod custom;
 pub mod generic;
+pub mod routes;
 
 pub use custom::CustomHandlerRegistry;
 pub use generic::GenericHandler;

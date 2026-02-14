@@ -72,6 +72,16 @@ impl TranslationState {
         }
     }
 
+    /// Restore a translation job from a persistence snapshot
+    pub fn restore(&self, job: TranslationJob) {
+        self.jobs.insert(job.urn.clone(), job);
+    }
+
+    /// List all translation jobs
+    pub fn list_all(&self) -> Vec<TranslationJob> {
+        self.jobs.iter().map(|j| j.value().clone()).collect()
+    }
+
     /// Simulate job progression
     pub fn simulate_progress(&self, urn: &str) {
         if let Some(mut job) = self.jobs.get_mut(urn) {

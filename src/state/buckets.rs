@@ -60,6 +60,11 @@ impl BucketState {
     pub fn delete_bucket(&self, bucket_key: &str) -> bool {
         self.buckets.remove(bucket_key).is_some()
     }
+
+    /// Restore a bucket from a persistence snapshot
+    pub fn restore(&self, bucket: BucketInfo) {
+        self.buckets.insert(bucket.bucket_key.clone(), bucket);
+    }
 }
 
 impl Default for BucketState {

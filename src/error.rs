@@ -11,6 +11,15 @@ pub enum MockError {
 
     #[error("YAML parsing error: {0}")]
     Yaml(#[from] serde_yaml::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Invalid OpenAPI specification: {0}")]
+    InvalidSpec(String),
+
+    #[error("State persistence error: {0}")]
+    StatePersistence(String),
 }
 
 pub type Result<T> = std::result::Result<T, MockError>;

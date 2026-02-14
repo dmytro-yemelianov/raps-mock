@@ -72,6 +72,12 @@ impl WebhooksState {
     pub fn delete_subscription(&self, hook_id: &str) -> bool {
         self.subscriptions.remove(hook_id).is_some()
     }
+
+    /// Restore a subscription from a persistence snapshot
+    pub fn restore(&self, subscription: WebhookSubscription) {
+        self.subscriptions
+            .insert(subscription.hook_id.clone(), subscription);
+    }
 }
 
 impl Default for WebhooksState {

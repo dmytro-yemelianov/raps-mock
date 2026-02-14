@@ -51,7 +51,9 @@ impl TestServer {
         let addr = listener.local_addr()?;
 
         let task = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
+            if let Err(e) = axum::serve(listener, app).await {
+                tracing::error!("Test server failed: {}", e);
+            }
         });
 
         Ok(Self {

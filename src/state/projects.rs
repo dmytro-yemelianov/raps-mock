@@ -90,6 +90,25 @@ impl ProjectState {
     pub fn get_project(&self, project_id: &str) -> Option<ProjectInfo> {
         self.projects.get(project_id).map(|p| p.clone())
     }
+
+    /// Restore a hub from a persistence snapshot
+    pub fn restore_hub(&self, hub: HubInfo) {
+        self.hubs.insert(hub.id.clone(), hub);
+    }
+
+    /// Restore a project from a persistence snapshot
+    pub fn restore_project(&self, project: ProjectInfo) {
+        self.hub_projects
+            .entry(project.hub_id.clone())
+            .or_default()
+            .push(project.id.clone());
+        self.projects.insert(project.id.clone(), project);
+    }
+
+    /// List all projects across all hubs
+    pub fn list_all_projects(&self) -> Vec<ProjectInfo> {
+        self.projects.iter().map(|p| p.value().clone()).collect()
+    }
 }
 
 impl Default for ProjectState {

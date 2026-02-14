@@ -79,6 +79,26 @@ impl ObjectState {
             .and_then(|bucket_objects| bucket_objects.remove(object_key))
             .is_some()
     }
+
+    /// Restore an object from a persistence snapshot
+    pub fn restore(&self, object: ObjectInfo) {
+        let bucket_objects = self.objects.entry(object.bucket_key.clone()).or_default();
+        bucket_objects.insert(object.object_key.clone(), object);
+    }
+
+    /// List all objects across all buckets
+    pub fn list_all(&self) -> Vec<ObjectInfo> {
+        self.objects
+            .iter()
+            .flat_map(|bucket| {
+                bucket
+                    .value()
+                    .iter()
+                    .map(|o| o.value().clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
 }
 
 impl Default for ObjectState {

@@ -67,6 +67,25 @@ impl IssuesState {
             .unwrap_or_default()
     }
 
+    /// Restore an issue from a persistence snapshot
+    pub fn restore(&self, issue: IssueInfo) {
+        let project_issues = self.issues.entry(issue.project_id.clone()).or_default();
+        project_issues.insert(issue.id.clone(), issue);
+    }
+
+    /// List all issues across all projects
+    pub fn list_all(&self) -> Vec<IssueInfo> {
+        self.issues
+            .iter()
+            .flat_map(|proj| {
+                proj.value()
+                    .iter()
+                    .map(|i| i.value().clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     /// Update issue status
     pub fn update_issue_status(&self, project_id: &str, issue_id: &str, status: String) -> bool {
         self.issues

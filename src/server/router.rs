@@ -24,14 +24,17 @@ pub fn build_router(
     // Clone state for use in closures
     let state_clone = state.clone();
 
-    // 1. Register dynamic routes from OpenAPI specs
+    // 1. Register hardcoded routes first (stateful handlers take priority)
+    router = register_hardcoded_routes(router, state_clone.clone(), &mut registered_routes);
+
+    // 2. Register dynamic routes from OpenAPI specs (fill gaps not covered above)
     for route in routes_defs {
         let path = route.path_pattern.clone();
         let method = route.method;
 
         if !registered_routes.insert((path.clone(), method)) {
             tracing::debug!(
-                "Skipping duplicate dynamic route: {} {}",
+                "Skipping dynamic route (already covered by hardcoded): {} {}",
                 method.as_str(),
                 path
             );
@@ -50,9 +53,6 @@ pub fn build_router(
             HttpMethod::Patch => router.route(&path, patch(service)),
         };
     }
-
-    // 2. Register hardcoded routes (fallback for what's not in OpenAPI)
-    router = register_hardcoded_routes(router, state_clone.clone(), &mut registered_routes);
 
     // Apply middleware
     router = router
@@ -87,7 +87,7 @@ fn register_hardcoded_routes(
                 router.route(path, handler)
             } else {
                 tracing::debug!(
-                    "Skipping hardcoded route (already covered by OpenAPI): {} {}",
+                    "Skipping duplicate hardcoded route: {} {}",
                     method.as_str(),
                     path
                 );

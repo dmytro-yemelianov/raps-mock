@@ -95,15 +95,33 @@ fn register_hardcoded_routes(
             }
         };
 
-    // Authentication endpoints
+    // Authentication endpoints (accept both JSON and form-encoded bodies)
     let s = state.clone();
     router = add_route(
         router,
         "/authentication/v2/token",
         HttpMethod::Post,
-        post(move |Json(body): Json<Value>| {
+        post(move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
             let state = s.clone();
-            async move { routes::handle_auth_token(state, body).await }
+            async move {
+                let content_type = headers
+                    .get(axum::http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                let parsed: Value = if content_type.contains("application/x-www-form-urlencoded") {
+                    let text = String::from_utf8_lossy(&body);
+                    let mut map = serde_json::Map::new();
+                    for pair in text.split('&') {
+                        if let Some((k, v)) = pair.split_once('=') {
+                            map.insert(k.to_string(), Value::String(v.to_string()));
+                        }
+                    }
+                    Value::Object(map)
+                } else {
+                    serde_json::from_slice(&body).unwrap_or_default()
+                };
+                routes::handle_auth_token(state, parsed).await
+            }
         }),
     );
 

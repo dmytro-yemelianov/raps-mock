@@ -64,6 +64,14 @@ pub fn build_router(
         router = router.layer(axum::Extension(state_manager));
     }
 
+    // Health check (outside auth middleware so it bypasses auth)
+    router = router.route(
+        "/health",
+        get(|| async {
+            axum::Json(serde_json::json!({"status": "ok", "service": "raps-mock"}))
+        }),
+    );
+
     Ok(router)
 }
 

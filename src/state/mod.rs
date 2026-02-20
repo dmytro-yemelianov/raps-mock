@@ -3,10 +3,12 @@
 
 pub mod auth;
 pub mod buckets;
+pub mod da;
 pub mod issues;
 pub mod manager;
 pub mod objects;
 pub mod projects;
+pub mod reality;
 pub mod translations;
 pub mod webhooks;
 

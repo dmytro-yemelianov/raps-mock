@@ -2,7 +2,7 @@
 // Copyright 2024-2025 Dmytro Yemelianov
 
 use crate::error::{MockError, Result};
-use crate::state::{auth, buckets, issues, objects, projects, translations, webhooks};
+use crate::state::{auth, buckets, da, issues, objects, projects, reality, translations, webhooks};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -40,6 +40,10 @@ pub struct StateManager {
     pub issues: Arc<issues::IssuesState>,
     /// Webhooks storage
     pub webhooks: Arc<webhooks::WebhooksState>,
+    /// Design Automation storage
+    pub da: Arc<da::DaState>,
+    /// Reality Capture storage
+    pub reality: Arc<reality::RealityState>,
 }
 
 impl StateManager {
@@ -53,6 +57,8 @@ impl StateManager {
             translations: Arc::new(translations::TranslationState::new()),
             issues: Arc::new(issues::IssuesState::new()),
             webhooks: Arc::new(webhooks::WebhooksState::new()),
+            da: Arc::new(da::DaState::new()),
+            reality: Arc::new(reality::RealityState::new()),
         }
     }
 

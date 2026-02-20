@@ -7,10 +7,23 @@
 //! any request-specific parameters, and returns an `impl IntoResponse`.
 
 use axum::response::{IntoResponse, Json as JsonResponse};
-use base64::Engine as _;
+use base64::Engine as _;  // needed for .decode() method on engine instances
 use serde_json::{Value, json};
 
 use crate::state::StateManager;
+
+/// Decode a base64-encoded URN, supporting both standard and URL-safe alphabets.
+/// Returns the original string if decoding fails (already decoded or not base64).
+fn decode_base64_urn(urn: &str) -> String {
+    // Try URL-safe base64 first (APS uses this), then standard
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(urn)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(urn))
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(urn))
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| urn.to_string())
+}
 
 // ---- Auth ----
 
@@ -47,6 +60,22 @@ pub async fn handle_auth_token(state: Option<StateManager>, body: Value) -> impl
         )
             .into_response()
     }
+}
+
+pub async fn handle_userinfo() -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "sub": "mock-user-001",
+            "name": "Mock User",
+            "given_name": "Mock",
+            "family_name": "User",
+            "email": "mock@example.com",
+            "email_verified": true,
+            "picture": ""
+        })),
+    )
+        .into_response()
 }
 
 // ---- OSS Buckets ----
@@ -289,7 +318,9 @@ pub async fn handle_create_translation(
             .and_then(|v| v.as_str())
             .unwrap_or("svf2");
 
-        let job = state_manager.translations.create_job(input_urn.to_string());
+        // Decode the base64 URN before storing so lookups match
+        let decoded_urn = decode_base64_urn(input_urn);
+        let job = state_manager.translations.create_job(decoded_urn);
 
         (
             axum::http::StatusCode::OK,
@@ -314,10 +345,7 @@ pub async fn handle_create_translation(
 }
 
 pub async fn handle_get_manifest(state: Option<StateManager>, urn: String) -> impl IntoResponse {
-    let decoded_urn = match base64::engine::general_purpose::STANDARD.decode(&urn) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-        Err(_) => urn.clone(),
-    };
+    let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
         if let Some(job) = state_manager.translations.get_job(&decoded_urn) {
@@ -870,6 +898,541 @@ pub async fn handle_signed_s3_download(
             .into_response()
     }
 }
+
+// ---- Design Automation ----
+
+pub async fn handle_da_list_engines(state: Option<StateManager>) -> impl IntoResponse {
+    let data = if let Some(ref sm) = state {
+        sm.da
+            .list_engines()
+            .into_iter()
+            .map(|e| serde_json::Value::String(e))
+            .collect::<Vec<_>>()
+    } else {
+        vec![
+            json!("Autodesk.Revit+2025"),
+            json!("Autodesk.AutoCAD+24"),
+        ]
+    };
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({ "data": data, "paginationToken": null })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_list_appbundles(state: Option<StateManager>) -> impl IntoResponse {
+    let data = if let Some(ref sm) = state {
+        sm.da
+            .list_app_bundles()
+            .into_iter()
+            .map(|b| serde_json::Value::String(b))
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({ "data": data, "paginationToken": null })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_create_appbundle(
+    state: Option<StateManager>,
+    body: Value,
+) -> impl IntoResponse {
+    let id = body
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("bundle")
+        .to_string();
+    let engine = body
+        .get("engine")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let desc = body
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if let Some(ref sm) = state {
+        let info = sm.da.create_app_bundle(id, engine, desc);
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": info.id,
+                "engine": info.engine,
+                "description": info.description,
+                "version": info.version,
+                "uploadParameters": {
+                    "endpointUrl": "https://example.com/upload",
+                    "formData": {}
+                }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": "mock-bundle",
+                "engine": "Autodesk.Revit+2025",
+                "version": 1,
+                "uploadParameters": { "endpointUrl": "https://example.com/upload", "formData": {} }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_da_delete_appbundle(
+    state: Option<StateManager>,
+    bundle_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        sm.da.delete_app_bundle(&bundle_id);
+    }
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+}
+
+pub async fn handle_da_create_appbundle_alias(
+    _state: Option<StateManager>,
+    bundle_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let alias_id = body
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
+    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": alias_id,
+            "version": version,
+            "receiver": bundle_id
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_list_activities(state: Option<StateManager>) -> impl IntoResponse {
+    let data = if let Some(ref sm) = state {
+        sm.da
+            .list_activities()
+            .into_iter()
+            .map(|a| serde_json::Value::String(a))
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({ "data": data, "paginationToken": null })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_create_activity(
+    state: Option<StateManager>,
+    body: Value,
+) -> impl IntoResponse {
+    let id = body
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("activity")
+        .to_string();
+    let engine = body
+        .get("engine")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let desc = body
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    if let Some(ref sm) = state {
+        let info = sm.da.create_activity(id, engine, desc);
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": info.id,
+                "engine": info.engine,
+                "version": info.version
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": "mock-activity",
+                "engine": "Autodesk.Revit+2025",
+                "version": 1
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_da_delete_activity(
+    state: Option<StateManager>,
+    activity_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        sm.da.delete_activity(&activity_id);
+    }
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+}
+
+pub async fn handle_da_create_activity_alias(
+    _state: Option<StateManager>,
+    activity_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let alias_id = body
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
+    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": alias_id,
+            "version": version,
+            "receiver": activity_id
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_create_workitem(
+    state: Option<StateManager>,
+    body: Value,
+) -> impl IntoResponse {
+    let activity_id = body
+        .get("activityId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if let Some(ref sm) = state {
+        let info = sm.da.create_work_item(activity_id);
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": info.id,
+                "status": info.status,
+                "progress": info.progress
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": "workitem-mock-001",
+                "status": "pending",
+                "progress": null
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_da_list_workitems(state: Option<StateManager>) -> impl IntoResponse {
+    let data = if let Some(ref sm) = state {
+        sm.da
+            .list_work_items()
+            .into_iter()
+            .map(|w| {
+                json!({
+                    "id": w.id,
+                    "status": w.status,
+                    "progress": w.progress,
+                    "activityId": w.activity_id
+                })
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![json!({
+            "id": "demo-workitem-001",
+            "status": "success",
+            "progress": "100%"
+        })]
+    };
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({ "data": data, "paginationToken": null })),
+    )
+        .into_response()
+}
+
+pub async fn handle_da_get_workitem(
+    state: Option<StateManager>,
+    workitem_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        if let Some(w) = sm.da.get_work_item(&workitem_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": w.id,
+                    "status": w.status,
+                    "progress": w.progress,
+                    "activityId": w.activity_id
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": workitem_id,
+                    "status": "success",
+                    "progress": "100%",
+                    "reportUrl": null
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": workitem_id,
+                "status": "success",
+                "progress": "100%",
+                "reportUrl": null
+            })),
+        )
+            .into_response()
+    }
+}
+
+// ---- Reality Capture ----
+
+pub async fn handle_reality_list_photoscenes(state: Option<StateManager>) -> impl IntoResponse {
+    let scenes = if let Some(ref sm) = state {
+        sm.reality
+            .list_photoscenes()
+            .into_iter()
+            .map(|p| {
+                json!({
+                    "photosceneid": p.photoscene_id,
+                    "name": p.name,
+                    "scenetype": p.scene_type,
+                    "status": p.status,
+                    "progress": p.progress,
+                    "progressmsg": p.progress_msg
+                })
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![json!({
+            "photosceneid": "job-demo-001",
+            "name": "Demo Scene",
+            "scenetype": "object",
+            "status": "Done",
+            "progress": "100",
+            "progressmsg": null
+        })]
+    };
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "Photoscenes": {
+                "photoscene": scenes
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_reality_create_photoscene(
+    state: Option<StateManager>,
+    body: Value,
+) -> impl IntoResponse {
+    // Body may come as JSON or form-encoded (parsed into Value)
+    let name = body
+        .get("scenename")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Untitled")
+        .to_string();
+    let scene_type = body
+        .get("scenetype")
+        .and_then(|v| v.as_str())
+        .unwrap_or("object")
+        .to_string();
+    let format = body
+        .get("format")
+        .and_then(|v| v.as_str())
+        .unwrap_or("rcm")
+        .to_string();
+
+    if let Some(ref sm) = state {
+        let info = sm.reality.create_photoscene(name, scene_type, format);
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "Photoscene": {
+                    "photosceneid": info.photoscene_id,
+                    "name": info.name,
+                    "scenetype": info.scene_type,
+                    "convertformat": info.convert_format,
+                    "status": info.status,
+                    "progress": info.progress
+                }
+            })),
+        )
+            .into_response()
+    } else {
+        let id = format!("ps-{}", uuid::Uuid::new_v4());
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "Photoscene": {
+                    "photosceneid": id,
+                    "name": name,
+                    "scenetype": scene_type,
+                    "convertformat": format,
+                    "status": "Created",
+                    "progress": "0"
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_reality_upload_file(
+    _state: Option<StateManager>,
+    body: Value,
+) -> impl IntoResponse {
+    let photoscene_id = body
+        .get("photosceneid")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "Files": {
+                "file": [{
+                    "filename": "uploaded-file",
+                    "fileid": format!("file-{}", uuid::Uuid::new_v4()),
+                    "filesize": "1024",
+                    "msg": "File uploaded",
+                    "photosceneid": photoscene_id
+                }]
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_reality_process_photoscene(
+    state: Option<StateManager>,
+    photoscene_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        sm.reality.process_photoscene(&photoscene_id);
+    }
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "Photoscene": {
+                "photosceneid": photoscene_id
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_reality_get_progress(
+    state: Option<StateManager>,
+    photoscene_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        if let Some(p) = sm.reality.get_photoscene(&photoscene_id) {
+            return (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "Photoscene": {
+                        "photosceneid": p.photoscene_id,
+                        "progress": p.progress,
+                        "progressmsg": p.progress_msg,
+                        "status": p.status
+                    }
+                })),
+            )
+                .into_response();
+        }
+    }
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "Photoscene": {
+                "photosceneid": photoscene_id,
+                "progress": "100",
+                "progressmsg": "Complete",
+                "status": "Done"
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_reality_get_result(
+    state: Option<StateManager>,
+    photoscene_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        if let Some(p) = sm.reality.get_photoscene(&photoscene_id) {
+            return (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "Photoscene": {
+                        "photosceneid": p.photoscene_id,
+                        "progress": p.progress,
+                        "progressmsg": p.progress_msg,
+                        "scenelink": p.scene_link,
+                        "filesize": "5242880"
+                    }
+                })),
+            )
+                .into_response();
+        }
+    }
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "Photoscene": {
+                "photosceneid": photoscene_id,
+                "progress": "100",
+                "progressmsg": "Complete",
+                "scenelink": "https://example.com/download/model.obj",
+                "filesize": "5242880"
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_reality_delete_photoscene(
+    state: Option<StateManager>,
+    photoscene_id: String,
+) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        sm.reality.delete_photoscene(&photoscene_id);
+    }
+    (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+}
+
+// ---- OSS Signed S3 Upload / Download ----
 
 pub async fn handle_signed_s3_download_content(
     state: Option<StateManager>,

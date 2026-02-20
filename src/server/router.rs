@@ -72,6 +72,9 @@ pub fn build_router(
         }),
     );
 
+    // User info endpoint (outside auth middleware, used by raps auth login --token)
+    router = router.route("/userinfo", get(routes::handle_userinfo));
+
     Ok(router)
 }
 
@@ -430,6 +433,269 @@ fn register_hardcoded_routes(
                 async move { routes::handle_delete_webhook(state, hook_id).await }
             },
         ),
+    );
+
+    // Design Automation endpoints (base: /da/us-east/v3)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/engines",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_da_list_engines(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/appbundles",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_da_list_appbundles(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/appbundles",
+        HttpMethod::Post,
+        post(move |Json(body): Json<Value>| {
+            let state = s.clone();
+            async move { routes::handle_da_create_appbundle(state, body).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/appbundles/:bundle_id",
+        HttpMethod::Delete,
+        delete(move |Path(bundle_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_da_delete_appbundle(state, bundle_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/appbundles/:bundle_id/aliases",
+        HttpMethod::Post,
+        post(
+            move |Path(bundle_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_da_create_appbundle_alias(state, bundle_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/activities",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_da_list_activities(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/activities",
+        HttpMethod::Post,
+        post(move |Json(body): Json<Value>| {
+            let state = s.clone();
+            async move { routes::handle_da_create_activity(state, body).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/activities/:activity_id",
+        HttpMethod::Delete,
+        delete(move |Path(activity_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_da_delete_activity(state, activity_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/activities/:activity_id/aliases",
+        HttpMethod::Post,
+        post(
+            move |Path(activity_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_da_create_activity_alias(state, activity_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/workitems",
+        HttpMethod::Post,
+        post(move |Json(body): Json<Value>| {
+            let state = s.clone();
+            async move { routes::handle_da_create_workitem(state, body).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/workitems",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_da_list_workitems(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/da/us-east/v3/workitems/:workitem_id",
+        HttpMethod::Get,
+        get(move |Path(workitem_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_da_get_workitem(state, workitem_id).await }
+        }),
+    );
+
+    // Reality Capture endpoints (base: /photo-to-3d/v1)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_reality_list_photoscenes(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene",
+        HttpMethod::Post,
+        post(
+            move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                let state = s.clone();
+                async move {
+                    let content_type = headers
+                        .get(axum::http::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    let parsed: Value =
+                        if content_type.contains("application/x-www-form-urlencoded") {
+                            let text = String::from_utf8_lossy(&body);
+                            let mut map = serde_json::Map::new();
+                            for pair in text.split('&') {
+                                if let Some((k, v)) = pair.split_once('=') {
+                                    let decoded =
+                                        urlencoding::decode(v).unwrap_or_default().to_string();
+                                    map.insert(k.to_string(), Value::String(decoded));
+                                }
+                            }
+                            Value::Object(map)
+                        } else {
+                            serde_json::from_slice(&body).unwrap_or_default()
+                        };
+                    routes::handle_reality_create_photoscene(state, parsed).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/file",
+        HttpMethod::Post,
+        post(
+            move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                let state = s.clone();
+                async move {
+                    let content_type = headers
+                        .get(axum::http::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    let parsed: Value =
+                        if content_type.contains("application/x-www-form-urlencoded") {
+                            let text = String::from_utf8_lossy(&body);
+                            let mut map = serde_json::Map::new();
+                            for pair in text.split('&') {
+                                if let Some((k, v)) = pair.split_once('=') {
+                                    map.insert(k.to_string(), Value::String(v.to_string()));
+                                }
+                            }
+                            Value::Object(map)
+                        } else {
+                            serde_json::from_slice(&body).unwrap_or_default()
+                        };
+                    routes::handle_reality_upload_file(state, parsed).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene/:photoscene_id",
+        HttpMethod::Post,
+        post(move |Path(photoscene_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_reality_process_photoscene(state, photoscene_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene/:photoscene_id/progress",
+        HttpMethod::Get,
+        get(move |Path(photoscene_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_reality_get_progress(state, photoscene_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene/:photoscene_id",
+        HttpMethod::Get,
+        get(move |Path(photoscene_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_reality_get_result(state, photoscene_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/photo-to-3d/v1/photoscene/:photoscene_id",
+        HttpMethod::Delete,
+        delete(move |Path(photoscene_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_reality_delete_photoscene(state, photoscene_id).await }
+        }),
     );
 
     router

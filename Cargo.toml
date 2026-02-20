@@ -62,6 +62,9 @@ base64 = "0.21"
 # Regex for path matching
 regex = "1.10"
 
+# URL encoding/decoding
+urlencoding = "2.1"
+
 # JSON Schema validation
 
 

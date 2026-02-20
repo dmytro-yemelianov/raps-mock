@@ -389,6 +389,400 @@ fn register_hardcoded_routes(
         ),
     );
 
+    // ACC Issues: issue types
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issue-types",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_get_issue_types(state, project_id).await }
+        }),
+    );
+
+    // ACC Issues: get single issue
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, issue_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_get_issue(state, project_id, issue_id).await }
+            },
+        ),
+    );
+
+    // ACC Issues: update issue
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, issue_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_update_issue(state, project_id, issue_id, body).await
+                }
+            },
+        ),
+    );
+
+    // ACC Issues: delete issue
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, issue_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_delete_issue(state, project_id, issue_id).await }
+            },
+        ),
+    );
+
+    // ACC Issues: list comments
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id/comments",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, issue_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_list_issue_comments(state, project_id, issue_id).await
+                }
+            },
+        ),
+    );
+
+    // ACC Issues: create comment
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id/comments",
+        HttpMethod::Post,
+        post(
+            move |Path((project_id, issue_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_create_issue_comment(state, project_id, issue_id, body).await
+                }
+            },
+        ),
+    );
+
+    // ACC Issues: delete comment
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id/comments/:comment_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, issue_id, comment_id)): Path<(String, String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_delete_issue_comment(state, project_id, issue_id, comment_id)
+                        .await
+                }
+            },
+        ),
+    );
+
+    // ACC Issues: list attachments (empty)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/issues/v1/projects/:project_id/issues/:issue_id/attachments",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, issue_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_list_issue_attachments(state, project_id, issue_id).await
+                }
+            },
+        ),
+    );
+
+    // ACC RFIs endpoints
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/rfis/v2/projects/:project_id/rfis",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_rfis(state, project_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/rfis/v2/projects/:project_id/rfis",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_create_rfi(state, project_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, rfi_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_get_rfi(state, project_id, rfi_id).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, rfi_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_update_rfi(state, project_id, rfi_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, rfi_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_delete_rfi(state, project_id, rfi_id).await }
+            },
+        ),
+    );
+
+    // ACC Assets endpoints
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/assets/v1/projects/:project_id/assets",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_assets(state, project_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/assets/v1/projects/:project_id/assets",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_create_asset(state, project_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/assets/v1/projects/:project_id/assets/:asset_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, asset_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_get_asset(state, project_id, asset_id).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/assets/v1/projects/:project_id/assets/:asset_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, asset_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_update_asset(state, project_id, asset_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/assets/v1/projects/:project_id/assets/:asset_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, asset_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_delete_asset(state, project_id, asset_id).await }
+            },
+        ),
+    );
+
+    // ACC Submittals endpoints
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/submittals/v1/projects/:project_id/items",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_submittals(state, project_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/submittals/v1/projects/:project_id/items",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_create_submittal(state, project_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/submittals/v1/projects/:project_id/items/:submittal_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, submittal_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_get_submittal(state, project_id, submittal_id).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/submittals/v1/projects/:project_id/items/:submittal_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, submittal_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_update_submittal(state, project_id, submittal_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/submittals/v1/projects/:project_id/items/:submittal_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, submittal_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_delete_submittal(state, project_id, submittal_id).await
+                }
+            },
+        ),
+    );
+
+    // ACC Checklists endpoints
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/checklists/v1/projects/:project_id/checklists",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_checklists(state, project_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/checklists/v1/projects/:project_id/checklists",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_create_checklist(state, project_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/checklists/v1/projects/:project_id/checklists/:checklist_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, checklist_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_get_checklist(state, project_id, checklist_id).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/checklists/v1/projects/:project_id/checklists/:checklist_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, checklist_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_update_checklist(state, project_id, checklist_id, body).await
+                }
+            },
+        ),
+    );
+
+    // ACC Checklist templates
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/checklists/v1/projects/:project_id/templates",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_checklist_templates(state, project_id).await }
+        }),
+    );
+
     // Webhooks endpoints
     let s = state.clone();
     router = add_route(
@@ -700,6 +1094,461 @@ fn register_hardcoded_routes(
         delete(move |Path(photoscene_id): Path<String>| {
             let state = s.clone();
             async move { routes::handle_reality_delete_photoscene(state, photoscene_id).await }
+        }),
+    );
+
+    // Admin Users endpoints (base: /construction/admin/v1/accounts/:account_id)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users",
+        HttpMethod::Get,
+        get(move |Path(account_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_admin_list_users(state, account_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users",
+        HttpMethod::Post,
+        post(
+            move |Path(account_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_admin_add_user(state, account_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users/search",
+        HttpMethod::Post,
+        post(
+            move |Path(account_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_admin_search_users(state, account_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users/import",
+        HttpMethod::Post,
+        post(
+            move |Path(account_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_admin_import_users(state, account_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users/:user_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((account_id, user_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_update_user(state, account_id, user_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/users/:user_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((account_id, user_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_admin_delete_user(state, account_id, user_id).await }
+            },
+        ),
+    );
+
+    // Admin Projects endpoints
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/projects",
+        HttpMethod::Get,
+        get(move |Path(account_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_admin_list_projects(state, account_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/projects",
+        HttpMethod::Post,
+        post(
+            move |Path(account_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_admin_create_project(state, account_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/projects/:project_id",
+        HttpMethod::Get,
+        get(
+            move |Path((account_id, project_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_get_project(state, account_id, project_id).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/projects/:project_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((account_id, project_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_update_project(state, account_id, project_id, body).await
+                }
+            },
+        ),
+    );
+
+    // Admin Operations: project users
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/projects/:project_id/users",
+        HttpMethod::Get,
+        get(
+            move |Path((account_id, project_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_list_project_users(state, account_id, project_id).await
+                }
+            },
+        ),
+    );
+
+    // Admin Operations: job status
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/jobs/:job_id",
+        HttpMethod::Get,
+        get(move |Path(job_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_admin_get_job(state, job_id).await }
+        }),
+    );
+
+    // HQ Companies
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/hq/v1/accounts/:account_id/companies",
+        HttpMethod::Get,
+        get(move |Path(account_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_hq_list_companies(state, account_id).await }
+        }),
+    );
+
+    // Data Management: Folder contents
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id/contents",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, folder_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_list_folder_contents(state, project_id, folder_id).await
+                }
+            },
+        ),
+    );
+
+    // Data Management: Create folder
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_dm_create_folder(state, project_id, body).await }
+            },
+        ),
+    );
+
+    // Data Management: Get folder
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, folder_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_dm_get_folder(state, project_id, folder_id).await }
+            },
+        ),
+    );
+
+    // Data Management: Update folder
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, folder_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_update_folder(state, project_id, folder_id, body).await
+                }
+            },
+        ),
+    );
+
+    // Data Management: Delete folder
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, folder_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_dm_delete_folder(state, project_id, folder_id).await }
+            },
+        ),
+    );
+
+    // Data Management: Folder permissions
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id/permissions",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, folder_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_get_folder_permissions(state, project_id, folder_id).await
+                }
+            },
+        ),
+    );
+
+    // Data Management: Batch update folder permissions
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/folders/:folder_id/permissions:batch-update",
+        HttpMethod::Post,
+        post(
+            move |Path((project_id, folder_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_batch_update_folder_permissions(
+                        state, project_id, folder_id, body,
+                    )
+                    .await
+                }
+            },
+        ),
+    );
+
+    // Data Management: Top folders
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/topFolders",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_dm_list_top_folders(state, project_id).await }
+        }),
+    );
+
+    // Data Management: Items
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/items",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_dm_create_item(state, project_id, body).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/items/:item_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, item_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_dm_get_item(state, project_id, item_id).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/items/:item_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, item_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_update_item(state, project_id, item_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/items/:item_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, item_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_dm_delete_item(state, project_id, item_id).await }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/data/v1/projects/:project_id/items/:item_id/versions",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, item_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_list_item_versions(state, project_id, item_id).await
+                }
+            },
+        ),
+    );
+
+    // Data Management: Project info
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/project/v1/hubs/:hub_id/projects/:project_id",
+        HttpMethod::Get,
+        get(
+            move |Path((hub_id, project_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_dm_get_project(state, hub_id, project_id).await }
+            },
+        ),
+    );
+
+    // Project Templates
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/project_templates",
+        HttpMethod::Get,
+        get(move |Path(account_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_list_project_templates(state, account_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/project_templates",
+        HttpMethod::Post,
+        post(
+            move |Path(account_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_create_project_template(state, account_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/project_templates/:template_id",
+        HttpMethod::Get,
+        get(
+            move |Path((account_id, template_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_get_project_template(state, account_id, template_id).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/accounts/:account_id/project_templates/:template_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((account_id, template_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_update_project_template(state, account_id, template_id, body)
+                        .await
+                }
+            },
+        ),
+    );
+
+    // Webhook Events
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/webhooks/v1/events",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_list_webhook_events(state).await }
         }),
     );
 

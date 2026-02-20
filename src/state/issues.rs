@@ -16,16 +16,29 @@ pub struct IssueInfo {
     pub created_at: String,
 }
 
+/// ACC Issue comment information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentInfo {
+    pub id: String,
+    pub issue_id: String,
+    pub body: String,
+    pub created_at: String,
+}
+
 /// ACC Issues state
 pub struct IssuesState {
     /// Map of project_id -> issues
     issues: DashMap<String, DashMap<String, IssueInfo>>,
+    /// Map of issue_id -> comments
+    comments: DashMap<String, DashMap<String, CommentInfo>>,
 }
 
 impl IssuesState {
     pub fn new() -> Self {
         Self {
             issues: DashMap::new(),
+            comments: DashMap::new(),
         }
     }
 
@@ -97,6 +110,79 @@ impl IssuesState {
                     true
                 })
             })
+            .unwrap_or(false)
+    }
+
+    /// Update an issue with optional fields
+    pub fn update_issue(
+        &self,
+        project_id: &str,
+        issue_id: &str,
+        title: Option<String>,
+        description: Option<String>,
+        status: Option<String>,
+    ) -> Option<IssueInfo> {
+        let project_issues = self.issues.get(project_id)?;
+        let mut issue = project_issues.get_mut(issue_id)?;
+        if let Some(t) = title {
+            issue.title = t;
+        }
+        if let Some(d) = description {
+            issue.description = Some(d);
+        }
+        if let Some(s) = status {
+            issue.status = s;
+        }
+        Some(issue.clone())
+    }
+
+    /// Delete an issue
+    pub fn delete_issue(&self, project_id: &str, issue_id: &str) -> bool {
+        self.issues
+            .get(project_id)
+            .map(|project_issues| project_issues.remove(issue_id).is_some())
+            .unwrap_or(false)
+    }
+
+    /// Add a comment to an issue
+    pub fn add_comment(
+        &self,
+        project_id: &str,
+        issue_id: &str,
+        body: String,
+    ) -> Option<CommentInfo> {
+        // Verify the issue exists
+        if self.get_issue(project_id, issue_id).is_none() {
+            return None;
+        }
+
+        let comment_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let comment = CommentInfo {
+            id: comment_id.clone(),
+            issue_id: issue_id.to_string(),
+            body,
+            created_at: now,
+        };
+
+        let issue_comments = self.comments.entry(issue_id.to_string()).or_default();
+        issue_comments.insert(comment_id, comment.clone());
+        Some(comment)
+    }
+
+    /// List comments for an issue
+    pub fn list_comments(&self, _project_id: &str, issue_id: &str) -> Vec<CommentInfo> {
+        self.comments
+            .get(issue_id)
+            .map(|issue_comments| issue_comments.iter().map(|c| c.value().clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Delete a comment from an issue
+    pub fn delete_comment(&self, _project_id: &str, issue_id: &str, comment_id: &str) -> bool {
+        self.comments
+            .get(issue_id)
+            .map(|issue_comments| issue_comments.remove(comment_id).is_some())
             .unwrap_or(false)
     }
 }

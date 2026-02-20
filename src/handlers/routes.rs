@@ -498,6 +498,1073 @@ pub async fn handle_create_issue(
     }
 }
 
+// ---- ACC Issues (additional endpoints) ----
+
+pub async fn handle_get_issue_types(
+    _state: Option<StateManager>,
+    _project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                { "id": "issue-type-001", "title": "Design", "isActive": true },
+                { "id": "issue-type-002", "title": "Clash", "isActive": true },
+                { "id": "issue-type-003", "title": "Safety", "isActive": true },
+                { "id": "issue-type-004", "title": "Commissioning", "isActive": true }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 4 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_get_issue(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(issue) = state_manager.issues.get_issue(&project_id, &issue_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": issue.id,
+                    "title": issue.title,
+                    "description": issue.description,
+                    "status": issue.status,
+                    "createdAt": issue.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Issue {} not found", issue_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Issue not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_update_issue(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(issue) = state_manager
+            .issues
+            .update_issue(&project_id, &issue_id, title, description, status)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": issue.id,
+                    "title": issue.title,
+                    "description": issue.description,
+                    "status": issue.status,
+                    "createdAt": issue.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Issue {} not found", issue_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Issue not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_issue(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager.issues.delete_issue(&project_id, &issue_id) {
+            (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Issue {} not found", issue_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+    }
+}
+
+pub async fn handle_list_issue_comments(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let comments = state_manager.issues.list_comments(&project_id, &issue_id);
+        let total = comments.len() as i32;
+        let results: Vec<Value> = comments
+            .into_iter()
+            .map(|c| {
+                json!({
+                    "id": c.id,
+                    "issueId": c.issue_id,
+                    "body": c.body,
+                    "createdAt": c.created_at
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": {
+                    "limit": 50,
+                    "offset": 0,
+                    "totalResults": total
+                }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_create_issue_comment(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let comment_body = body
+            .get("body")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        if let Some(comment) =
+            state_manager
+                .issues
+                .add_comment(&project_id, &issue_id, comment_body)
+        {
+            (
+                axum::http::StatusCode::CREATED,
+                JsonResponse(json!({
+                    "id": comment.id,
+                    "issueId": comment.issue_id,
+                    "body": comment.body,
+                    "createdAt": comment.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Issue {} not found", issue_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": "mock-comment-id",
+                "issueId": issue_id,
+                "body": "Mock comment"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_issue_comment(
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
+    comment_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager
+            .issues
+            .delete_comment(&project_id, &issue_id, &comment_id)
+        {
+            (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Comment {} not found", comment_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+    }
+}
+
+pub async fn handle_list_issue_attachments(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _issue_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+        })),
+    )
+        .into_response()
+}
+
+// ---- ACC RFIs ----
+
+pub async fn handle_list_rfis(
+    state: Option<StateManager>,
+    project_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let rfis = state_manager.acc.list_rfis(&project_id);
+        let total = rfis.len() as i32;
+        let results: Vec<Value> = rfis
+            .into_iter()
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "title": r.title,
+                    "description": r.description,
+                    "status": r.status,
+                    "createdAt": r.created_at
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_create_rfi(
+    state: Option<StateManager>,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled RFI")
+            .to_string();
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let rfi = state_manager.acc.create_rfi(project_id, title, description);
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": rfi.id,
+                "title": rfi.title,
+                "description": rfi.description,
+                "status": rfi.status,
+                "createdAt": rfi.created_at
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": "mock-rfi-id",
+                "title": "Mock RFI",
+                "status": "open"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_rfi(
+    state: Option<StateManager>,
+    project_id: String,
+    rfi_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(rfi) = state_manager.acc.get_rfi(&project_id, &rfi_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": rfi.id,
+                    "title": rfi.title,
+                    "description": rfi.description,
+                    "status": rfi.status,
+                    "createdAt": rfi.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("RFI {} not found", rfi_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "RFI not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_update_rfi(
+    state: Option<StateManager>,
+    project_id: String,
+    rfi_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(rfi) =
+            state_manager
+                .acc
+                .update_rfi(&project_id, &rfi_id, title, description, status)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": rfi.id,
+                    "title": rfi.title,
+                    "description": rfi.description,
+                    "status": rfi.status,
+                    "createdAt": rfi.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("RFI {} not found", rfi_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "RFI not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_rfi(
+    state: Option<StateManager>,
+    project_id: String,
+    rfi_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager.acc.delete_rfi(&project_id, &rfi_id) {
+            (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("RFI {} not found", rfi_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+    }
+}
+
+// ---- ACC Assets ----
+
+pub async fn handle_list_assets(
+    state: Option<StateManager>,
+    project_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let assets = state_manager.acc.list_assets(&project_id);
+        let total = assets.len() as i32;
+        let results: Vec<Value> = assets
+            .into_iter()
+            .map(|a| {
+                json!({
+                    "id": a.id,
+                    "title": a.title,
+                    "description": a.description,
+                    "status": a.status,
+                    "createdAt": a.created_at
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_create_asset(
+    state: Option<StateManager>,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled Asset")
+            .to_string();
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let asset = state_manager
+            .acc
+            .create_asset(project_id, title, description);
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": asset.id,
+                "title": asset.title,
+                "description": asset.description,
+                "status": asset.status,
+                "createdAt": asset.created_at
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": "mock-asset-id",
+                "title": "Mock Asset",
+                "status": "active"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_asset(
+    state: Option<StateManager>,
+    project_id: String,
+    asset_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(asset) = state_manager.acc.get_asset(&project_id, &asset_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": asset.id,
+                    "title": asset.title,
+                    "description": asset.description,
+                    "status": asset.status,
+                    "createdAt": asset.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Asset {} not found", asset_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Asset not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_update_asset(
+    state: Option<StateManager>,
+    project_id: String,
+    asset_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(asset) =
+            state_manager
+                .acc
+                .update_asset(&project_id, &asset_id, title, description, status)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": asset.id,
+                    "title": asset.title,
+                    "description": asset.description,
+                    "status": asset.status,
+                    "createdAt": asset.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Asset {} not found", asset_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Asset not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_asset(
+    state: Option<StateManager>,
+    project_id: String,
+    asset_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager.acc.delete_asset(&project_id, &asset_id) {
+            (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Asset {} not found", asset_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+    }
+}
+
+// ---- ACC Submittals ----
+
+pub async fn handle_list_submittals(
+    state: Option<StateManager>,
+    project_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let submittals = state_manager.acc.list_submittals(&project_id);
+        let total = submittals.len() as i32;
+        let results: Vec<Value> = submittals
+            .into_iter()
+            .map(|s| {
+                json!({
+                    "id": s.id,
+                    "title": s.title,
+                    "description": s.description,
+                    "status": s.status,
+                    "createdAt": s.created_at
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_create_submittal(
+    state: Option<StateManager>,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled Submittal")
+            .to_string();
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let submittal = state_manager
+            .acc
+            .create_submittal(project_id, title, description);
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": submittal.id,
+                "title": submittal.title,
+                "description": submittal.description,
+                "status": submittal.status,
+                "createdAt": submittal.created_at
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": "mock-submittal-id",
+                "title": "Mock Submittal",
+                "status": "waiting"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_submittal(
+    state: Option<StateManager>,
+    project_id: String,
+    submittal_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(submittal) = state_manager.acc.get_submittal(&project_id, &submittal_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": submittal.id,
+                    "title": submittal.title,
+                    "description": submittal.description,
+                    "status": submittal.status,
+                    "createdAt": submittal.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Submittal {} not found", submittal_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Submittal not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_update_submittal(
+    state: Option<StateManager>,
+    project_id: String,
+    submittal_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(submittal) = state_manager.acc.update_submittal(
+            &project_id,
+            &submittal_id,
+            title,
+            description,
+            status,
+        ) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": submittal.id,
+                    "title": submittal.title,
+                    "description": submittal.description,
+                    "status": submittal.status,
+                    "createdAt": submittal.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Submittal {} not found", submittal_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Submittal not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_submittal(
+    state: Option<StateManager>,
+    project_id: String,
+    submittal_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager
+            .acc
+            .delete_submittal(&project_id, &submittal_id)
+        {
+            (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Submittal {} not found", submittal_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
+    }
+}
+
+// ---- ACC Checklists ----
+
+pub async fn handle_list_checklists(
+    state: Option<StateManager>,
+    project_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let checklists = state_manager.acc.list_checklists(&project_id);
+        let total = checklists.len() as i32;
+        let results: Vec<Value> = checklists
+            .into_iter()
+            .map(|c| {
+                json!({
+                    "id": c.id,
+                    "title": c.title,
+                    "description": c.description,
+                    "status": c.status,
+                    "createdAt": c.created_at
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_create_checklist(
+    state: Option<StateManager>,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled Checklist")
+            .to_string();
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let checklist = state_manager
+            .acc
+            .create_checklist(project_id, title, description);
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": checklist.id,
+                "title": checklist.title,
+                "description": checklist.description,
+                "status": checklist.status,
+                "createdAt": checklist.created_at
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": "mock-checklist-id",
+                "title": "Mock Checklist",
+                "status": "not_started"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_checklist(
+    state: Option<StateManager>,
+    project_id: String,
+    checklist_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(checklist) = state_manager.acc.get_checklist(&project_id, &checklist_id) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": checklist.id,
+                    "title": checklist.title,
+                    "description": checklist.description,
+                    "status": checklist.status,
+                    "createdAt": checklist.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Checklist {} not found", checklist_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Checklist not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_update_checklist(
+    state: Option<StateManager>,
+    project_id: String,
+    checklist_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(checklist) = state_manager.acc.update_checklist(
+            &project_id,
+            &checklist_id,
+            title,
+            description,
+            status,
+        ) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "id": checklist.id,
+                    "title": checklist.title,
+                    "description": checklist.description,
+                    "status": checklist.status,
+                    "createdAt": checklist.created_at
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Checklist {} not found", checklist_id)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "code": "NOT_FOUND",
+                "message": "Checklist not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_list_checklist_templates(
+    state: Option<StateManager>,
+    project_id: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let templates = state_manager.acc.list_templates(&project_id);
+        let total = templates.len() as i32;
+        let results: Vec<Value> = templates
+            .into_iter()
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "description": t.description
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": [],
+                "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+            })),
+        )
+            .into_response()
+    }
+}
+
 // ---- Webhooks ----
 
 pub async fn handle_list_all_webhooks(state: Option<StateManager>) -> impl IntoResponse {
@@ -1465,4 +2532,704 @@ pub async fn handle_signed_s3_download_content(
         )
             .into_response()
     }
+}
+
+// ---- Admin Users ----
+
+pub async fn handle_admin_list_users(
+    _state: Option<StateManager>,
+    _account_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                {
+                    "id": "user-001",
+                    "email": "alice@example.com",
+                    "name": "Alice Johnson",
+                    "status": "active",
+                    "role": "project_admin"
+                },
+                {
+                    "id": "user-002",
+                    "email": "bob@example.com",
+                    "name": "Bob Smith",
+                    "status": "active",
+                    "role": "project_user"
+                }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_add_user(
+    _state: Option<StateManager>,
+    _account_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("new@example.com");
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New User");
+    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("project_user");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "id": format!("user-{}", uuid::Uuid::new_v4()),
+            "email": email,
+            "name": name,
+            "status": "active",
+            "role": role
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_search_users(
+    _state: Option<StateManager>,
+    _account_id: String,
+    _body: Value,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                {
+                    "id": "user-001",
+                    "email": "alice@example.com",
+                    "name": "Alice Johnson",
+                    "status": "active",
+                    "role": "project_admin"
+                }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 1 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_update_user(
+    _state: Option<StateManager>,
+    _account_id: String,
+    user_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated User");
+    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("project_user");
+    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": user_id,
+            "email": "user@example.com",
+            "name": name,
+            "status": status,
+            "role": role
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_delete_user(
+    _state: Option<StateManager>,
+    _account_id: String,
+    _user_id: String,
+) -> impl IntoResponse {
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+}
+
+pub async fn handle_admin_import_users(
+    _state: Option<StateManager>,
+    _account_id: String,
+    _body: Value,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "success": 2,
+            "failure": 0,
+            "success_items": [
+                { "email": "imported1@example.com", "status": "active" },
+                { "email": "imported2@example.com", "status": "active" }
+            ],
+            "failure_items": []
+        })),
+    )
+        .into_response()
+}
+
+// ---- Admin Projects ----
+
+pub async fn handle_admin_list_projects(
+    _state: Option<StateManager>,
+    _account_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                {
+                    "id": "proj-001",
+                    "name": "Mock Project Alpha",
+                    "status": "active",
+                    "accountId": "mock-account-001"
+                },
+                {
+                    "id": "proj-002",
+                    "name": "Mock Project Beta",
+                    "status": "active",
+                    "accountId": "mock-account-001"
+                }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_create_project(
+    _state: Option<StateManager>,
+    account_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New Project");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "id": format!("proj-{}", uuid::Uuid::new_v4()),
+            "name": name,
+            "status": "active",
+            "accountId": account_id
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_get_project(
+    _state: Option<StateManager>,
+    account_id: String,
+    project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": project_id,
+            "name": "Mock Project",
+            "status": "active",
+            "accountId": account_id
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_update_project(
+    _state: Option<StateManager>,
+    account_id: String,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated Project");
+    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": project_id,
+            "name": name,
+            "status": status,
+            "accountId": account_id
+        })),
+    )
+        .into_response()
+}
+
+// ---- Admin Operations ----
+
+pub async fn handle_admin_list_project_users(
+    _state: Option<StateManager>,
+    _account_id: String,
+    _project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                {
+                    "id": "user-001",
+                    "email": "alice@example.com",
+                    "name": "Alice Johnson",
+                    "status": "active",
+                    "role": "project_admin"
+                }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 1 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_get_job(
+    _state: Option<StateManager>,
+    job_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": job_id,
+            "status": "complete",
+            "progress": "100%",
+            "result": "success"
+        })),
+    )
+        .into_response()
+}
+
+// ---- HQ Companies ----
+
+pub async fn handle_hq_list_companies(
+    _state: Option<StateManager>,
+    _account_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!([
+            { "id": "comp-001", "name": "Mock Construction Co", "trade": "General Contractor" },
+            { "id": "comp-002", "name": "Mock Engineering Ltd", "trade": "Electrical" }
+        ])),
+    )
+        .into_response()
+}
+
+// ---- Data Management: Folders ----
+
+pub async fn handle_dm_list_folder_contents(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _folder_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": [
+                {
+                    "type": "folders",
+                    "id": "urn:adsk.wipprod:fs.folder:co.mock-subfolder-001",
+                    "attributes": {
+                        "name": "Subfolder",
+                        "displayName": "Subfolder",
+                        "createTime": "2026-01-01T00:00:00Z",
+                        "lastModifiedTime": "2026-01-15T00:00:00Z"
+                    }
+                },
+                {
+                    "type": "items",
+                    "id": "urn:adsk.wipprod:dm.lineage:mock-item-001",
+                    "attributes": {
+                        "displayName": "Drawing.dwg",
+                        "createTime": "2026-01-01T00:00:00Z",
+                        "lastModifiedTime": "2026-01-10T00:00:00Z"
+                    }
+                }
+            ]
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_create_folder(
+    _state: Option<StateManager>,
+    _project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body
+        .get("data")
+        .and_then(|d| d.get("attributes"))
+        .and_then(|a| a.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("New Folder");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "folders",
+                "id": format!("urn:adsk.wipprod:fs.folder:co.{}", uuid::Uuid::new_v4()),
+                "attributes": {
+                    "name": name,
+                    "displayName": name,
+                    "createTime": "2026-01-01T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_get_folder(
+    _state: Option<StateManager>,
+    _project_id: String,
+    folder_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "folders",
+                "id": folder_id,
+                "attributes": {
+                    "name": "Plans",
+                    "displayName": "Plans",
+                    "createTime": "2026-01-01T00:00:00Z",
+                    "lastModifiedTime": "2026-01-15T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_update_folder(
+    _state: Option<StateManager>,
+    _project_id: String,
+    folder_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body
+        .get("data")
+        .and_then(|d| d.get("attributes"))
+        .and_then(|a| a.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Updated Folder");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "folders",
+                "id": folder_id,
+                "attributes": {
+                    "name": name,
+                    "displayName": name,
+                    "createTime": "2026-01-01T00:00:00Z",
+                    "lastModifiedTime": "2026-02-01T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_delete_folder(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _folder_id: String,
+) -> impl IntoResponse {
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+}
+
+pub async fn handle_dm_get_folder_permissions(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _folder_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": [
+                {
+                    "type": "folder-permissions",
+                    "id": "perm-001",
+                    "attributes": {
+                        "subjectId": "user-001",
+                        "subjectType": "user",
+                        "actions": ["view", "download", "collaborate"]
+                    }
+                }
+            ]
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_batch_update_folder_permissions(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _folder_id: String,
+    _body: Value,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": []
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_list_top_folders(
+    _state: Option<StateManager>,
+    _project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": [
+                {
+                    "type": "folders",
+                    "id": "urn:adsk.wipprod:fs.folder:co.mock-top-folder-001",
+                    "attributes": {
+                        "name": "Project Files",
+                        "displayName": "Project Files",
+                        "createTime": "2026-01-01T00:00:00Z"
+                    }
+                },
+                {
+                    "type": "folders",
+                    "id": "urn:adsk.wipprod:fs.folder:co.mock-top-folder-002",
+                    "attributes": {
+                        "name": "Plans",
+                        "displayName": "Plans",
+                        "createTime": "2026-01-01T00:00:00Z"
+                    }
+                }
+            ]
+        })),
+    )
+        .into_response()
+}
+
+// ---- Data Management: Items ----
+
+pub async fn handle_dm_create_item(
+    _state: Option<StateManager>,
+    _project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body
+        .get("data")
+        .and_then(|d| d.get("attributes"))
+        .and_then(|a| a.get("displayName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("NewFile.dwg");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "items",
+                "id": format!("urn:adsk.wipprod:dm.lineage:{}", uuid::Uuid::new_v4()),
+                "attributes": {
+                    "displayName": name,
+                    "createTime": "2026-01-01T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_get_item(
+    _state: Option<StateManager>,
+    _project_id: String,
+    item_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "items",
+                "id": item_id,
+                "attributes": {
+                    "displayName": "MockFile.dwg",
+                    "createTime": "2026-01-01T00:00:00Z",
+                    "lastModifiedTime": "2026-01-15T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_update_item(
+    _state: Option<StateManager>,
+    _project_id: String,
+    item_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body
+        .get("data")
+        .and_then(|d| d.get("attributes"))
+        .and_then(|a| a.get("displayName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("UpdatedFile.dwg");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "items",
+                "id": item_id,
+                "attributes": {
+                    "displayName": name,
+                    "createTime": "2026-01-01T00:00:00Z",
+                    "lastModifiedTime": "2026-02-01T00:00:00Z"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_dm_delete_item(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _item_id: String,
+) -> impl IntoResponse {
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
+}
+
+pub async fn handle_dm_list_item_versions(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _item_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": [
+                {
+                    "type": "versions",
+                    "id": "urn:adsk.wipprod:fs.file:vf.mock-version-001",
+                    "attributes": {
+                        "displayName": "MockFile.dwg",
+                        "versionNumber": 1,
+                        "createTime": "2026-01-01T00:00:00Z"
+                    }
+                }
+            ]
+        })),
+    )
+        .into_response()
+}
+
+// ---- Data Management: Project Info ----
+
+pub async fn handle_dm_get_project(
+    _state: Option<StateManager>,
+    _hub_id: String,
+    project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "jsonapi": { "version": "1.0" },
+            "data": {
+                "type": "projects",
+                "id": project_id,
+                "attributes": {
+                    "name": "Mock Project"
+                }
+            }
+        })),
+    )
+        .into_response()
+}
+
+// ---- Project Templates ----
+
+pub async fn handle_list_project_templates(
+    _state: Option<StateManager>,
+    _account_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [
+                { "id": "tmpl-001", "name": "Default Template", "status": "active" },
+                { "id": "tmpl-002", "name": "Construction Template", "status": "active" }
+            ],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_create_project_template(
+    _state: Option<StateManager>,
+    _account_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New Template");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "id": format!("tmpl-{}", uuid::Uuid::new_v4()),
+            "name": name,
+            "status": "active"
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_get_project_template(
+    _state: Option<StateManager>,
+    _account_id: String,
+    template_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": template_id,
+            "name": "Default Template",
+            "status": "active"
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_update_project_template(
+    _state: Option<StateManager>,
+    _account_id: String,
+    template_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated Template");
+    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": template_id,
+            "name": name,
+            "status": status
+        })),
+    )
+        .into_response()
+}
+
+// ---- Webhook Events ----
+
+pub async fn handle_list_webhook_events(
+    _state: Option<StateManager>,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "data": [
+                { "event": "dm.version.added" },
+                { "event": "dm.version.copied" },
+                { "event": "dm.version.deleted" },
+                { "event": "dm.version.modified" },
+                { "event": "dm.folder.added" },
+                { "event": "dm.folder.modified" }
+            ]
+        })),
+    )
+        .into_response()
 }

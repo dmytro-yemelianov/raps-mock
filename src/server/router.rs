@@ -387,6 +387,17 @@ fn register_hardcoded_routes(
     let s = state.clone();
     router = add_route(
         router,
+        "/webhooks/v1/hooks",
+        HttpMethod::Get,
+        get(move || {
+            let state = s.clone();
+            async move { routes::handle_list_all_webhooks(state).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
         "/webhooks/v1/systems/:system/events/:event/hooks",
         HttpMethod::Get,
         get(move |Path((system, _event)): Path<(String, String)>| {

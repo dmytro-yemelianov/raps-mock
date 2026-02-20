@@ -472,6 +472,44 @@ pub async fn handle_create_issue(
 
 // ---- Webhooks ----
 
+pub async fn handle_list_all_webhooks(state: Option<StateManager>) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        let subscriptions = state_manager.webhooks.list_subscriptions();
+        let data: Vec<Value> = subscriptions
+            .into_iter()
+            .map(|s| {
+                json!({
+                    "hookId": s.hook_id,
+                    "tenant": s.tenant,
+                    "callbackUrl": s.callback_url,
+                    "event": s.event,
+                    "system": s.system,
+                    "createdDate": s.created_date,
+                    "status": s.status,
+                    "scope": s.scope
+                })
+            })
+            .collect();
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": data,
+                "links": { "next": null }
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": [],
+                "links": { "next": null }
+            })),
+        )
+            .into_response()
+    }
+}
+
 pub async fn handle_list_webhooks(
     state: Option<StateManager>,
     system: String,

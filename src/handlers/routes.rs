@@ -583,3 +583,272 @@ pub async fn handle_delete_webhook(
         (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
     }
 }
+
+// ---- OSS Bucket Details / Delete ----
+
+pub async fn handle_get_bucket(
+    state: Option<StateManager>,
+    bucket_key: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(bucket) = state_manager.buckets.get_bucket(&bucket_key) {
+            (axum::http::StatusCode::OK, JsonResponse(json!(bucket))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "reason": format!("Bucket {} does not exist", bucket_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "reason": "Bucket not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_bucket(
+    state: Option<StateManager>,
+    bucket_key: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager.buckets.delete_bucket(&bucket_key) {
+            (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "reason": format!("Bucket {} does not exist", bucket_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+    }
+}
+
+// ---- OSS Object Details / Delete ----
+
+pub async fn handle_get_object_details(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+            let now = chrono::Utc::now().to_rfc3339();
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "bucketKey": obj.bucket_key,
+                    "objectKey": obj.object_key,
+                    "objectId": obj.object_id,
+                    "sha1": obj.sha1,
+                    "size": obj.size,
+                    "contentType": obj.content_type,
+                    "location": obj.location,
+                    "createdDate": now,
+                    "lastModifiedDate": now
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "reason": format!("Object {}/{} does not exist", bucket_key, object_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({
+                "reason": "Object not found"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_delete_object(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        if state_manager.objects.delete_object(&bucket_key, &object_key) {
+            (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "reason": format!("Object {}/{} does not exist", bucket_key, object_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+    }
+}
+
+// ---- OSS Signed S3 Upload / Download ----
+
+pub async fn handle_signed_s3_upload_get(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+    host: String,
+) -> impl IntoResponse {
+    // Returns a signed upload URL pointing back to this mock server.
+    let upload_key = format!("mock-upload-key-{}", uuid::Uuid::new_v4());
+    let _state = state;
+    let base = format!("http://{}", host);
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "uploadKey": upload_key,
+            "urls": [
+                format!("{}/oss/v2/buckets/{}/objects/{}/signeds3upload/mock-s3", base, bucket_key, object_key)
+            ]
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_signed_s3_upload_complete(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+    body: Value,
+) -> impl IntoResponse {
+    // Finalize the upload: return existing object (stored by the PUT) or create one
+    let _upload_key = body
+        .get("uploadKey")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if let Some(ref state_manager) = state {
+        // Return existing object if the mock-s3 PUT already stored it
+        let obj = state_manager
+            .objects
+            .get_object(&bucket_key, &object_key)
+            .unwrap_or_else(|| {
+                state_manager
+                    .objects
+                    .upload_object(bucket_key, object_key, 0, None)
+            });
+        (axum::http::StatusCode::OK, JsonResponse(json!(obj))).into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "bucketKey": bucket_key,
+                "objectKey": object_key,
+                "objectId": format!("urn:adsk.objects:os.object:{}/{}", bucket_key, object_key),
+                "size": 0,
+                "contentType": "application/octet-stream"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_signed_s3_upload_put(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    // Mock S3 PUT endpoint — receives the actual file bytes.
+    // Store the object with the real size.
+    let size = body.len() as u64;
+    if let Some(ref state_manager) = state {
+        state_manager
+            .objects
+            .upload_object(bucket_key, object_key, size, None);
+    }
+    (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
+}
+
+pub async fn handle_signed_s3_download(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+    host: String,
+) -> impl IntoResponse {
+    let base = format!("http://{}", host);
+    if let Some(ref state_manager) = state {
+        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "url": format!("{}/oss/v2/buckets/{}/objects/{}/signeds3download/mock-s3", base, bucket_key, object_key),
+                    "size": obj.size,
+                    "sha1": obj.sha1,
+                    "status": "complete"
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "reason": format!("Object {}/{} does not exist", bucket_key, object_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "url": format!("{}/oss/v2/mock-download", base),
+                "status": "complete"
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_signed_s3_download_content(
+    state: Option<StateManager>,
+    bucket_key: String,
+    object_key: String,
+) -> impl IntoResponse {
+    // Mock S3 download — return dummy bytes (capped at 10MB to avoid memory issues)
+    if let Some(ref state_manager) = state {
+        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+            let capped_size = std::cmp::min(obj.size, 10 * 1024 * 1024) as usize;
+            let dummy_content = vec![0u8; capped_size];
+            (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, obj.content_type.as_str())],
+                dummy_content,
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                "Object not found",
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+            vec![0u8; 0],
+        )
+            .into_response()
+    }
+}

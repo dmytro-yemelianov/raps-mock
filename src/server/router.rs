@@ -159,6 +159,148 @@ fn register_hardcoded_routes(
         }),
     );
 
+    // Bucket details
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/details",
+        HttpMethod::Get,
+        get(move |Path(bucket_key): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_get_bucket(state, bucket_key).await }
+        }),
+    );
+
+    // Bucket delete
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key",
+        HttpMethod::Delete,
+        delete(move |Path(bucket_key): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_delete_bucket(state, bucket_key).await }
+        }),
+    );
+
+    // Object details
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/details",
+        HttpMethod::Get,
+        get(move |Path((bucket_key, object_key)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_get_object_details(state, bucket_key, object_key).await }
+        }),
+    );
+
+    // Object delete
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key",
+        HttpMethod::Delete,
+        delete(
+            move |Path((bucket_key, object_key)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_delete_object(state, bucket_key, object_key).await }
+            },
+        ),
+    );
+
+    // Signed S3 upload URL (GET = get URL, POST = complete upload)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3upload",
+        HttpMethod::Get,
+        get(
+            move |Path((bucket_key, object_key)): Path<(String, String)>,
+                  headers: axum::http::HeaderMap| {
+                let state = s.clone();
+                async move {
+                    let host = headers
+                        .get(axum::http::header::HOST)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("localhost:3000")
+                        .to_string();
+                    routes::handle_signed_s3_upload_get(state, bucket_key, object_key, host).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3upload",
+        HttpMethod::Post,
+        post(
+            move |Path((bucket_key, object_key)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_signed_s3_upload_complete(state, bucket_key, object_key, body)
+                        .await
+                }
+            },
+        ),
+    );
+
+    // Mock S3 PUT endpoint for actual file upload
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3upload/mock-s3",
+        HttpMethod::Put,
+        put(
+            move |Path((bucket_key, object_key)): Path<(String, String)>,
+                  body: axum::body::Bytes| {
+                let state = s.clone();
+                async move {
+                    routes::handle_signed_s3_upload_put(state, bucket_key, object_key, body).await
+                }
+            },
+        ),
+    );
+
+    // Signed S3 download URL
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3download",
+        HttpMethod::Get,
+        get(
+            move |Path((bucket_key, object_key)): Path<(String, String)>,
+                  headers: axum::http::HeaderMap| {
+                let state = s.clone();
+                async move {
+                    let host = headers
+                        .get(axum::http::header::HOST)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("localhost:3000")
+                        .to_string();
+                    routes::handle_signed_s3_download(state, bucket_key, object_key, host).await
+                }
+            },
+        ),
+    );
+
+    // Mock S3 download content endpoint
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3download/mock-s3",
+        HttpMethod::Get,
+        get(move |Path((bucket_key, object_key)): Path<(String, String)>| {
+            let state = s.clone();
+            async move {
+                routes::handle_signed_s3_download_content(state, bucket_key, object_key).await
+            }
+        }),
+    );
+
     // Data Management endpoints
     let s = state.clone();
     router = add_route(

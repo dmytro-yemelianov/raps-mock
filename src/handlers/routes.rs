@@ -2589,21 +2589,23 @@ pub async fn handle_admin_add_user(
 pub async fn handle_admin_search_users(
     _state: Option<StateManager>,
     _account_id: String,
-    _body: Value,
+    body: Value,
 ) -> impl IntoResponse {
+    // The CLI deserializes this as a single AccountUser (not paginated)
+    let email = body
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("alice@example.com");
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
-            "results": [
-                {
-                    "id": "user-001",
-                    "email": "alice@example.com",
-                    "name": "Alice Johnson",
-                    "status": "active",
-                    "role": "project_admin"
-                }
-            ],
-            "pagination": { "limit": 50, "offset": 0, "totalResults": 1 }
+            "id": format!("user-{}", uuid::Uuid::new_v4()),
+            "email": email,
+            "name": "Mock User",
+            "firstName": "Mock",
+            "lastName": "User",
+            "status": "active",
+            "companyId": "mock-company-001"
         })),
     )
         .into_response()
@@ -2782,6 +2784,96 @@ pub async fn handle_admin_get_job(
         })),
     )
         .into_response()
+}
+
+// ---- Project-level User Endpoints (used by raps admin user add/remove/update) ----
+
+pub async fn handle_admin_get_project_user(
+    _state: Option<StateManager>,
+    _project_id: String,
+    user_id: String,
+) -> impl IntoResponse {
+    // Return 404 to indicate user doesn't exist yet (triggers add)
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        JsonResponse(json!({
+            "code": "NOT_FOUND",
+            "message": format!("User {} not found in project", user_id)
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_add_project_user(
+    _state: Option<StateManager>,
+    project_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let user_id = body
+        .get("userId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("mock-user-id");
+    let email = body
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("user@example.com");
+    (
+        axum::http::StatusCode::CREATED,
+        JsonResponse(json!({
+            "id": user_id,
+            "email": email,
+            "name": "Mock User",
+            "status": "active",
+            "projectId": project_id,
+            "roleId": body.get("roleId").and_then(|v| v.as_str()).unwrap_or("role-default")
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_list_project_users_v2(
+    _state: Option<StateManager>,
+    _project_id: String,
+) -> impl IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "results": [],
+            "pagination": { "limit": 50, "offset": 0, "totalResults": 0 }
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_update_project_user(
+    _state: Option<StateManager>,
+    project_id: String,
+    user_id: String,
+    body: Value,
+) -> impl IntoResponse {
+    let role_id = body
+        .get("roleId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("role-default");
+    (
+        axum::http::StatusCode::OK,
+        JsonResponse(json!({
+            "id": user_id,
+            "email": "user@example.com",
+            "status": "active",
+            "projectId": project_id,
+            "roleId": role_id
+        })),
+    )
+        .into_response()
+}
+
+pub async fn handle_admin_delete_project_user(
+    _state: Option<StateManager>,
+    _project_id: String,
+    _user_id: String,
+) -> impl IntoResponse {
+    (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
 
 // ---- HQ Companies ----
@@ -3108,9 +3200,11 @@ pub async fn handle_dm_list_item_versions(
                     "type": "versions",
                     "id": "urn:adsk.wipprod:fs.file:vf.mock-version-001",
                     "attributes": {
+                        "name": "MockFile.dwg",
                         "displayName": "MockFile.dwg",
                         "versionNumber": 1,
-                        "createTime": "2026-01-01T00:00:00Z"
+                        "createTime": "2026-01-01T00:00:00Z",
+                        "storageSize": 1024000
                     }
                 }
             ]

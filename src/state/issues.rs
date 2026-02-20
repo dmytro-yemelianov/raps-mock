@@ -36,10 +36,37 @@ pub struct IssuesState {
 
 impl IssuesState {
     pub fn new() -> Self {
-        Self {
+        let state = Self {
             issues: DashMap::new(),
             comments: DashMap::new(),
+        };
+        // Pre-seed well-known demo issues used by raps-examples tests
+        let demo_project = "mock-project-001";
+        let now = chrono::Utc::now().to_rfc3339();
+        let demo_issues = vec![
+            ("8d5b8b2c-3a1e-467c-9f1b-6c2d9a8e1f5b", "Demo Issue - Structural"),
+            ("issue-a-demo-001", "Issue A"),
+            ("issue-b-demo-002", "Issue B"),
+            ("issue-c-demo-003", "Issue C"),
+            ("cmt-demo-001", "Demo Issue for Comments"),
+        ];
+        {
+            let project_issues = state.issues.entry(demo_project.to_string()).or_default();
+            for (id, title) in demo_issues {
+                project_issues.insert(
+                    id.to_string(),
+                    IssueInfo {
+                        id: id.to_string(),
+                        project_id: demo_project.to_string(),
+                        title: title.to_string(),
+                        description: None,
+                        status: "open".to_string(),
+                        created_at: now.clone(),
+                    },
+                );
+            }
         }
+        state
     }
 
     /// Create a new issue

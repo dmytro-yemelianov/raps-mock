@@ -1261,6 +1261,80 @@ fn register_hardcoded_routes(
         }),
     );
 
+    // Project-level user endpoints (used by raps admin user add/remove/update)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/projects/:project_id/users/:user_id",
+        HttpMethod::Get,
+        get(
+            move |Path((project_id, user_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_get_project_user(state, project_id, user_id).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/projects/:project_id/users",
+        HttpMethod::Post,
+        post(
+            move |Path(project_id): Path<String>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_add_project_user(state, project_id, body).await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/projects/:project_id/users",
+        HttpMethod::Get,
+        get(move |Path(project_id): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_admin_list_project_users_v2(state, project_id).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/projects/:project_id/users/:user_id",
+        HttpMethod::Patch,
+        patch(
+            move |Path((project_id, user_id)): Path<(String, String)>,
+                  Json(body): Json<Value>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_update_project_user(state, project_id, user_id, body)
+                        .await
+                }
+            },
+        ),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/construction/admin/v1/projects/:project_id/users/:user_id",
+        HttpMethod::Delete,
+        delete(
+            move |Path((project_id, user_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_admin_delete_project_user(state, project_id, user_id).await
+                }
+            },
+        ),
+    );
+
     // HQ Companies
     let s = state.clone();
     router = add_route(
@@ -1477,6 +1551,22 @@ fn register_hardcoded_routes(
             move |Path((hub_id, project_id)): Path<(String, String)>| {
                 let state = s.clone();
                 async move { routes::handle_dm_get_project(state, hub_id, project_id).await }
+            },
+        ),
+    );
+
+    // Data Management: Top folders (project/v1 path used by `raps project info`)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/project/v1/hubs/:hub_id/projects/:project_id/topFolders",
+        HttpMethod::Get,
+        get(
+            move |Path((_hub_id, _project_id)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_dm_list_top_folders(state, _project_id).await
+                }
             },
         ),
     );

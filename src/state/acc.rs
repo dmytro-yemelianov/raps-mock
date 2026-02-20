@@ -75,12 +75,92 @@ pub struct AccState {
 
 impl AccState {
     pub fn new() -> Self {
-        Self {
+        let state = Self {
             rfis: DashMap::new(),
             assets: DashMap::new(),
             submittals: DashMap::new(),
             checklists: DashMap::new(),
+        };
+        // Pre-seed well-known demo data used by raps-examples tests
+        let demo_project = "mock-project-001";
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // RFIs
+        {
+            let rfis = state.rfis.entry(demo_project.to_string()).or_default();
+            for (id, title) in [
+                ("rfi-demo-001", "Demo RFI - MEP Routing"),
+                ("demo-struct-eng-001", "Structural RFI"),
+            ] {
+                rfis.insert(
+                    id.to_string(),
+                    RfiInfo {
+                        id: id.to_string(),
+                        project_id: demo_project.to_string(),
+                        title: title.to_string(),
+                        description: None,
+                        status: "open".to_string(),
+                        created_at: now.clone(),
+                    },
+                );
+            }
         }
+
+        // Assets
+        {
+            let assets = state.assets.entry(demo_project.to_string()).or_default();
+            for (id, title) in [
+                ("ast-demo-001", "Demo Asset - HVAC Unit"),
+                ("ast-chiller-01", "Chiller CH-01"),
+                ("ast-chiller-02", "Chiller CH-02"),
+            ] {
+                assets.insert(
+                    id.to_string(),
+                    AssetInfo {
+                        id: id.to_string(),
+                        project_id: demo_project.to_string(),
+                        title: title.to_string(),
+                        description: Some(title.to_string()),
+                        status: "active".to_string(),
+                        created_at: now.clone(),
+                    },
+                );
+            }
+        }
+
+        // Submittals
+        {
+            let submittals = state.submittals.entry(demo_project.to_string()).or_default();
+            submittals.insert(
+                "sub-demo-001".to_string(),
+                SubmittalInfo {
+                    id: "sub-demo-001".to_string(),
+                    project_id: demo_project.to_string(),
+                    title: "Demo Submittal - Concrete Mix".to_string(),
+                    description: None,
+                    status: "waiting".to_string(),
+                    created_at: now.clone(),
+                },
+            );
+        }
+
+        // Checklists
+        {
+            let checklists = state.checklists.entry(demo_project.to_string()).or_default();
+            checklists.insert(
+                "chk-demo-001".to_string(),
+                ChecklistInfo {
+                    id: "chk-demo-001".to_string(),
+                    project_id: demo_project.to_string(),
+                    title: "Demo Checklist - Pre-Pour Inspection".to_string(),
+                    description: None,
+                    status: "not_started".to_string(),
+                    created_at: now.clone(),
+                },
+            );
+        }
+
+        state
     }
 
     // ---- RFIs ----
@@ -341,17 +421,17 @@ impl AccState {
     pub fn list_templates(&self, _project_id: &str) -> Vec<ChecklistTemplate> {
         vec![
             ChecklistTemplate {
-                id: "tmpl-safety-001".to_string(),
+                id: "tpl-demo-001".to_string(),
                 title: "Safety Inspection".to_string(),
                 description: "Standard safety inspection checklist".to_string(),
             },
             ChecklistTemplate {
-                id: "tmpl-quality-001".to_string(),
+                id: "tpl-demo-002".to_string(),
                 title: "Quality Assurance".to_string(),
                 description: "Quality assurance review checklist".to_string(),
             },
             ChecklistTemplate {
-                id: "tmpl-commissioning-001".to_string(),
+                id: "tpl-demo-003".to_string(),
                 title: "Commissioning".to_string(),
                 description: "Building commissioning checklist".to_string(),
             },

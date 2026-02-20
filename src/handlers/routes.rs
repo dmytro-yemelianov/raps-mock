@@ -480,12 +480,15 @@ pub async fn handle_list_webhooks(
         let subscriptions = state_manager.webhooks.list_subscriptions();
         let data: Vec<Value> = subscriptions
             .into_iter()
-            .filter(|s| s.tenant == system)
+            .filter(|s| s.system == system)
             .map(|s| {
                 json!({
                     "hookId": s.hook_id,
                     "tenant": s.tenant,
                     "callbackUrl": s.callback_url,
+                    "event": s.event,
+                    "system": s.system,
+                    "createdDate": s.created_date,
                     "status": s.status,
                     "scope": s.scope
                 })
@@ -514,6 +517,7 @@ pub async fn handle_list_webhooks(
 pub async fn handle_create_webhook(
     state: Option<StateManager>,
     system: String,
+    event: String,
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
@@ -529,16 +533,20 @@ pub async fn handle_create_webhook(
                 .and_then(|s| s.get("folder"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            project: body
+            workflow: body
                 .get("scope")
-                .and_then(|s| s.get("project"))
+                .and_then(|s| s.get("workflow"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
         };
 
-        let subscription = state_manager
-            .webhooks
-            .create_subscription(system, callback_url, scope);
+        let subscription = state_manager.webhooks.create_subscription(
+            system.clone(),
+            callback_url,
+            event.clone(),
+            system,
+            scope,
+        );
 
         (
             axum::http::StatusCode::CREATED,
@@ -546,6 +554,9 @@ pub async fn handle_create_webhook(
                 "hookId": subscription.hook_id,
                 "tenant": subscription.tenant,
                 "callbackUrl": subscription.callback_url,
+                "event": subscription.event,
+                "system": subscription.system,
+                "createdDate": subscription.created_date,
                 "status": subscription.status,
                 "scope": subscription.scope
             })),
@@ -556,6 +567,8 @@ pub async fn handle_create_webhook(
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
                 "hookId": "mock-hook-id",
+                "event": event,
+                "system": system,
                 "status": "active"
             })),
         )

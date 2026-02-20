@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -46,29 +46,49 @@ cargo run --example basic-usage
 
 - **`server.rs`**: `MockServer` struct that orchestrates startup. Parses OpenAPI specs, creates `StateManager` (if stateful mode), builds the axum router via `server/router.rs`.
 
+- **`server/router.rs`**: Builds the axum router. Routes are registered in two phases: (1) dynamic routes from OpenAPI specs, (2) hardcoded fallback routes. Duplicate detection ensures OpenAPI routes take precedence over hardcoded ones.
+
 - **`openapi/`**: OpenAPI 3.0 spec handling
   - `parser.rs`: Recursively parses YAML/JSON specs from a directory, converts OpenAPI path params (`{param}`) to axum format (`:param`)
-  - `types.rs`: Serde structs for OpenAPI schema elements
+  - `types.rs`: Serde structs for OpenAPI schema elements (`RouteDefinition`, `HttpMethod`)
 
 - **`handlers/`**: Request handlers
   - `generic.rs`: `GenericHandler` extracts example responses from OpenAPI specs (checks `example`, `examples`, schema example)
-  - `stateful.rs`: Handlers with state mutations
   - `custom.rs`: `CustomHandlerRegistry` for user-defined endpoint overrides
 
-- **`state/`**: In-memory storage for stateful mode
-  - `manager.rs`: `StateManager` holds `Arc` references to all state modules
-  - Individual modules (`auth.rs`, `buckets.rs`, `objects.rs`, `projects.rs`, `translations.rs`, `issues.rs`, `webhooks.rs`) each manage specific APS resource types using `dashmap`
+- **`state/`**: In-memory storage for stateful mode (all use `dashmap` for concurrent access)
+  - `manager.rs`: `StateManager` holds `Arc<T>` references to all state modules
+  - `auth.rs`: OAuth token generation and validation
+  - `buckets.rs`: OSS bucket CRUD
+  - `objects.rs`: OSS object metadata
+  - `projects.rs`: Data Management hubs and projects
+  - `translations.rs`: Model Derivative job tracking with status progression
+  - `issues.rs`: ACC Issues CRUD
+  - `webhooks.rs`: Webhook subscription management
 
-- **`middleware/`**: axum middleware for auth, CORS, error handling
+- **`middleware/`**: axum layers for auth validation and CORS
+
+- **`testing.rs`**: `TestServer` helper that starts a mock server on a random port for integration tests. Auto-cleans up on drop.
 
 ### Operation Modes
 
 - **Stateless**: Returns fixed example responses from OpenAPI specs
 - **Stateful**: Maintains in-memory state, supports CRUD operations on mocked resources
 
+### Library Usage
+
+The crate exports `MockServer`, `MockServerConfig`, `MockMode`, and `TestServer` from `lib.rs`. Use `TestServer::start_default()` for quick test setup:
+
+```rust
+let server = TestServer::start_default().await.unwrap();
+// server.url contains "http://127.0.0.1:<random_port>"
+```
+
 ## Testing
 
 Integration tests in `tests/integration/` require the `aps-sdk-openapi` directory to be present (default location: `../aps-sdk-openapi`). The `aps_repo_smoke.rs` test is feature-gated behind `aps_ci` and runs in CI against the real APS OpenAPI repo.
+
+CI runs two jobs: `build-and-test` (format, clippy, build, test) and `aps-openapi-smoke` (clones the APS OpenAPI repo and runs smoke tests).
 
 ## Dependencies
 

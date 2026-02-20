@@ -401,9 +401,9 @@ fn register_hardcoded_routes(
         "/webhooks/v1/systems/:system/events/:event/hooks",
         HttpMethod::Post,
         post(
-            move |Path((system, _event)): Path<(String, String)>, Json(body): Json<Value>| {
+            move |Path((system, event)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move { routes::handle_create_webhook(state, system, body).await }
+                async move { routes::handle_create_webhook(state, system, event, body).await }
             },
         ),
     );

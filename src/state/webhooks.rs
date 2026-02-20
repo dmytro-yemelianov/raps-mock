@@ -11,16 +11,18 @@ pub struct WebhookSubscription {
     pub hook_id: String,
     pub tenant: String,
     pub callback_url: String,
+    pub event: String,
+    pub system: String,
     pub scope: WebhookScope,
     pub status: String,
-    pub created_at: i64,
+    pub created_date: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookScope {
     pub folder: Option<String>,
-    pub project: Option<String>,
+    pub workflow: Option<String>,
 }
 
 /// Webhooks state
@@ -40,17 +42,21 @@ impl WebhooksState {
         &self,
         tenant: String,
         callback_url: String,
+        event: String,
+        system: String,
         scope: WebhookScope,
     ) -> WebhookSubscription {
         let hook_id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().timestamp_millis();
+        let now = chrono::Utc::now().to_rfc3339();
         let subscription = WebhookSubscription {
             hook_id: hook_id.clone(),
             tenant,
             callback_url,
+            event,
+            system,
             scope,
             status: "active".to_string(),
-            created_at: now,
+            created_date: now,
         };
 
         self.subscriptions.insert(hook_id, subscription.clone());

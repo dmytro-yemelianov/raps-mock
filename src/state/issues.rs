@@ -13,7 +13,7 @@ pub struct IssueInfo {
     pub title: String,
     pub description: Option<String>,
     pub status: String,
-    pub created_at: i64,
+    pub created_at: String,
 }
 
 /// ACC Issues state
@@ -37,7 +37,7 @@ impl IssuesState {
         description: Option<String>,
     ) -> IssueInfo {
         let issue_id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().timestamp_millis();
+        let now = chrono::Utc::now().to_rfc3339();
         let issue = IssueInfo {
             id: issue_id.clone(),
             project_id: project_id.clone(),

@@ -610,8 +610,10 @@ fn register_hardcoded_routes(
                             let mut map = serde_json::Map::new();
                             for pair in text.split('&') {
                                 if let Some((k, v)) = pair.split_once('=') {
+                                    // Form-encoded + means space; decode after replacing
+                                    let v_fixed = v.replace('+', " ");
                                     let decoded =
-                                        urlencoding::decode(v).unwrap_or_default().to_string();
+                                        urlencoding::decode(&v_fixed).unwrap_or_default().to_string();
                                     map.insert(k.to_string(), Value::String(decoded));
                                 }
                             }

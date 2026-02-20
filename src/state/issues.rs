@@ -50,6 +50,7 @@ impl IssuesState {
             ("issue-c-demo-003", "Issue C"),
             ("cmt-demo-001", "Demo Issue for Comments"),
             ("demo-issue-001", "Demo Issue - General"),
+            ("lc-issue-001", "Lifecycle Issue"),
         ];
         {
             let project_issues = state.issues.entry(demo_project.to_string()).or_default();

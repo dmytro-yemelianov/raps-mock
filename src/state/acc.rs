@@ -91,6 +91,7 @@ impl AccState {
             for (id, title) in [
                 ("rfi-demo-001", "Demo RFI - MEP Routing"),
                 ("demo-struct-eng-001", "Structural RFI"),
+                ("lc-rfi-001", "Lifecycle RFI"),
             ] {
                 rfis.insert(
                     id.to_string(),
@@ -131,17 +132,22 @@ impl AccState {
         // Submittals
         {
             let submittals = state.submittals.entry(demo_project.to_string()).or_default();
-            submittals.insert(
-                "sub-demo-001".to_string(),
-                SubmittalInfo {
-                    id: "sub-demo-001".to_string(),
-                    project_id: demo_project.to_string(),
-                    title: "Demo Submittal - Concrete Mix".to_string(),
-                    description: None,
-                    status: "waiting".to_string(),
-                    created_at: now.clone(),
-                },
-            );
+            for (id, title) in [
+                ("sub-demo-001", "Demo Submittal - Concrete Mix"),
+                ("lc-sub-001", "Lifecycle Submittal"),
+            ] {
+                submittals.insert(
+                    id.to_string(),
+                    SubmittalInfo {
+                        id: id.to_string(),
+                        project_id: demo_project.to_string(),
+                        title: title.to_string(),
+                        description: None,
+                        status: "waiting".to_string(),
+                        created_at: now.clone(),
+                    },
+                );
+            }
         }
 
         // Checklists

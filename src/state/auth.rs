@@ -27,10 +27,32 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn new() -> Self {
-        Self {
+        let state = Self {
             tokens_by_client: DashMap::new(),
             token_index: DashMap::new(),
-        }
+        };
+
+        // Pre-seed well-known 3-legged mock token so Docker/test environments
+        // can use `raps auth login --token mock-3leg-token` and have all
+        // 3-legged-auth endpoints accept it without a real OAuth flow.
+        let now = Self::current_timestamp();
+        let three_leg = TokenInfo {
+            access_token: "mock-3leg-token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 86400 * 365,
+            expires_at: now + 86400 * 365,
+            refresh_token: None,
+            scope: Some("data:read data:write data:create data:search bucket:create bucket:read bucket:update bucket:delete account:read account:write user:read user:write user-profile:read viewables:read code:all openid".to_string()),
+            client_id: "mock-3leg-client".to_string(),
+        };
+        state
+            .token_index
+            .insert(three_leg.access_token.clone(), three_leg.client_id.clone());
+        state
+            .tokens_by_client
+            .insert(three_leg.client_id.clone(), three_leg);
+
+        state
     }
 
     fn current_timestamp() -> u64 {

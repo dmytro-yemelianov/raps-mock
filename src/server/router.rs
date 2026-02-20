@@ -27,6 +27,9 @@ pub fn build_router(
     // 1. Register hardcoded routes first (stateful handlers take priority)
     router = register_hardcoded_routes(router, state_clone.clone(), &mut registered_routes);
 
+    // Reserve paths that will be registered outside middleware (prevents OpenAPI duplicates)
+    registered_routes.insert(("/userinfo".to_string(), HttpMethod::Get));
+
     // 2. Register dynamic routes from OpenAPI specs (fill gaps not covered above)
     for route in routes_defs {
         let path = route.path_pattern.clone();

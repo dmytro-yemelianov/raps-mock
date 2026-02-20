@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// OSS object information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ObjectInfo {
     pub bucket_key: String,
     pub object_key: String,

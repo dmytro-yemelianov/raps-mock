@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// ACC Issue information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IssueInfo {
     pub id: String,
     pub project_id: String,

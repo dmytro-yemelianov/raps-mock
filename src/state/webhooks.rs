@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// Webhook subscription information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebhookSubscription {
     pub hook_id: String,
     pub tenant: String,
@@ -16,6 +17,7 @@ pub struct WebhookSubscription {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WebhookScope {
     pub folder: Option<String>,
     pub project: Option<String>,

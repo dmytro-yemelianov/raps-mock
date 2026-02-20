@@ -19,6 +19,7 @@ pub enum TranslationStatus {
 
 /// Translation job information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationJob {
     pub urn: String,
     pub status: TranslationStatus,

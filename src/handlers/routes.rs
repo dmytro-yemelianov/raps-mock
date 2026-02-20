@@ -296,7 +296,11 @@ pub async fn handle_create_translation(
             JsonResponse(json!({
                 "result": "success",
                 "urn": job.urn,
-                "acceptedJobs": { "type": output_type }
+                "acceptedJobs": {
+                    "output": {
+                        "formats": [{ "type": output_type }]
+                    }
+                }
             })),
         )
             .into_response()
@@ -326,7 +330,7 @@ pub async fn handle_get_manifest(state: Option<StateManager>, urn: String) -> im
 
             let manifest = json!({
                 "type": "manifest",
-                "hasThumbnail": status_str == "success",
+                "hasThumbnail": if status_str == "success" { "true" } else { "false" },
                 "status": status_str,
                 "progress": job.progress,
                 "region": "US",
@@ -359,11 +363,12 @@ pub async fn handle_get_manifest(state: Option<StateManager>, urn: String) -> im
             axum::http::StatusCode::OK,
             JsonResponse(json!({
                 "type": "manifest",
-                "hasThumbnail": false,
+                "hasThumbnail": "false",
                 "status": "pending",
                 "progress": "0%",
                 "region": "US",
                 "urn": decoded_urn,
+                "version": "1.0",
                 "derivatives": []
             })),
         )
@@ -379,7 +384,8 @@ pub async fn handle_list_issues(
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
         let issues = state_manager.issues.list_issues(&project_id);
-        let data: Vec<Value> = issues
+        let total = issues.len() as i32;
+        let results: Vec<Value> = issues
             .into_iter()
             .map(|i| {
                 json!({
@@ -393,13 +399,27 @@ pub async fn handle_list_issues(
             .collect();
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "data": data })),
+            JsonResponse(json!({
+                "results": results,
+                "pagination": {
+                    "limit": 100,
+                    "offset": 0,
+                    "totalResults": total
+                }
+            })),
         )
             .into_response()
     } else {
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "data": [] })),
+            JsonResponse(json!({
+                "results": [],
+                "pagination": {
+                    "limit": 100,
+                    "offset": 0,
+                    "totalResults": 0
+                }
+            })),
         )
             .into_response()
     }
@@ -429,13 +449,11 @@ pub async fn handle_create_issue(
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
-                "data": {
-                    "id": issue.id,
-                    "title": issue.title,
-                    "description": issue.description,
-                    "status": issue.status,
-                    "createdAt": issue.created_at
-                }
+                "id": issue.id,
+                "title": issue.title,
+                "description": issue.description,
+                "status": issue.status,
+                "createdAt": issue.created_at
             })),
         )
             .into_response()
@@ -443,11 +461,9 @@ pub async fn handle_create_issue(
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
-                "data": {
-                    "id": "mock-issue-id",
-                    "title": "Mock Issue",
-                    "status": "open"
-                }
+                "id": "mock-issue-id",
+                "title": "Mock Issue",
+                "status": "open"
             })),
         )
             .into_response()
@@ -462,7 +478,7 @@ pub async fn handle_list_webhooks(
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
         let subscriptions = state_manager.webhooks.list_subscriptions();
-        let hooks: Vec<Value> = subscriptions
+        let data: Vec<Value> = subscriptions
             .into_iter()
             .filter(|s| s.tenant == system)
             .map(|s| {
@@ -477,13 +493,19 @@ pub async fn handle_list_webhooks(
             .collect();
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "hooks": hooks })),
+            JsonResponse(json!({
+                "data": data,
+                "links": { "next": null }
+            })),
         )
             .into_response()
     } else {
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "hooks": [] })),
+            JsonResponse(json!({
+                "data": [],
+                "links": { "next": null }
+            })),
         )
             .into_response()
     }

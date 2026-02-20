@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// OSS bucket information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BucketInfo {
     pub bucket_key: String,
     pub bucket_owner: String,
@@ -15,6 +16,7 @@ pub struct BucketInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Permission {
     pub auth_id: String,
     pub access: String,

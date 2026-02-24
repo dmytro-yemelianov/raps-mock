@@ -9,7 +9,7 @@ async fn test_server_creation() {
     let config = MockServerConfig {
         mode: MockMode::Stateful,
         openapi_dir: PathBuf::from("../aps-sdk-openapi"),
-        state_file: None,
+        db_path: None,
         verbose: false,
         host: "127.0.0.1".to_string(),
         port: 0, // Let OS choose port
@@ -24,7 +24,7 @@ async fn test_stateless_mode() {
     let config = MockServerConfig {
         mode: MockMode::Stateless,
         openapi_dir: PathBuf::from("../aps-sdk-openapi"),
-        state_file: None,
+        db_path: None,
         verbose: false,
         host: "127.0.0.1".to_string(),
         port: 0,

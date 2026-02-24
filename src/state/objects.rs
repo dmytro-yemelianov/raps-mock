@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
-use dashmap::DashMap;
+use crate::state::db::Db;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// OSS object information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,15 +21,12 @@ pub struct ObjectInfo {
 
 /// OSS object state
 pub struct ObjectState {
-    /// Map of bucket_key -> objects
-    objects: DashMap<String, DashMap<String, ObjectInfo>>,
+    db: Arc<Db>,
 }
 
 impl ObjectState {
-    pub fn new() -> Self {
-        Self {
-            objects: DashMap::new(),
-        }
+    pub fn new(db: Arc<Db>) -> Self {
+        Self { db }
     }
 
     /// Upload an object
@@ -42,7 +41,7 @@ impl ObjectState {
         let object = ObjectInfo {
             bucket_key: bucket_key.clone(),
             object_key: object_key.clone(),
-            object_id: object_id.clone(),
+            object_id,
             sha1: format!("sha1_{}", uuid::Uuid::new_v4()),
             size,
             content_type: content_type.unwrap_or_else(|| "application/octet-stream".to_string()),
@@ -52,58 +51,103 @@ impl ObjectState {
             ),
         };
 
-        let bucket_objects = self.objects.entry(bucket_key).or_default();
-        bucket_objects.insert(object_key, object.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT OR REPLACE INTO objects (bucket_key, object_key, object_id, sha1, size, content_type, location)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                object.bucket_key,
+                object.object_key,
+                object.object_id,
+                object.sha1,
+                object.size as i64,
+                object.content_type,
+                object.location,
+            ],
+        )
+        .expect("failed to upload object");
         object
     }
 
     /// Get an object
     pub fn get_object(&self, bucket_key: &str, object_key: &str) -> Option<ObjectInfo> {
-        self.objects
-            .get(bucket_key)?
-            .get(object_key)
-            .map(|o| o.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location
+             FROM objects WHERE bucket_key = ?1 AND object_key = ?2",
+            rusqlite::params![bucket_key, object_key],
+            Self::row_to_object,
+        )
+        .optional()
+        .expect("failed to get object")
     }
 
     /// List objects in a bucket
     pub fn list_objects(&self, bucket_key: &str) -> Vec<ObjectInfo> {
-        self.objects
-            .get(bucket_key)
-            .map(|bucket_objects| bucket_objects.iter().map(|o| o.value().clone()).collect())
-            .unwrap_or_default()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location
+                 FROM objects WHERE bucket_key = ?1",
+            )
+            .expect("failed to prepare list objects");
+        stmt.query_map(rusqlite::params![bucket_key], Self::row_to_object)
+            .expect("failed to list objects")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     /// Delete an object
     pub fn delete_object(&self, bucket_key: &str, object_key: &str) -> bool {
-        self.objects
-            .get(bucket_key)
-            .and_then(|bucket_objects| bucket_objects.remove(object_key))
-            .is_some()
-    }
-
-    /// Restore an object from a persistence snapshot
-    pub fn restore(&self, object: ObjectInfo) {
-        let bucket_objects = self.objects.entry(object.bucket_key.clone()).or_default();
-        bucket_objects.insert(object.object_key.clone(), object);
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM objects WHERE bucket_key = ?1 AND object_key = ?2",
+            rusqlite::params![bucket_key, object_key],
+        )
+        .expect("failed to delete object")
+            > 0
     }
 
     /// List all objects across all buckets
     pub fn list_all(&self) -> Vec<ObjectInfo> {
-        self.objects
-            .iter()
-            .flat_map(|bucket| {
-                bucket
-                    .value()
-                    .iter()
-                    .map(|o| o.value().clone())
-                    .collect::<Vec<_>>()
-            })
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location FROM objects",
+            )
+            .expect("failed to prepare list all objects");
+        stmt.query_map([], Self::row_to_object)
+            .expect("failed to list all objects")
+            .filter_map(|r| r.ok())
             .collect()
     }
-}
 
-impl Default for ObjectState {
-    fn default() -> Self {
-        Self::new()
+    /// Copy an object from source to destination (server-side copy)
+    pub fn copy_object(
+        &self,
+        src_bucket: &str,
+        src_key: &str,
+        dest_bucket: &str,
+        dest_key: &str,
+    ) -> Option<ObjectInfo> {
+        let source = self.get_object(src_bucket, src_key)?;
+        Some(self.upload_object(
+            dest_bucket.to_string(),
+            dest_key.to_string(),
+            source.size,
+            Some(source.content_type),
+        ))
+    }
+
+    fn row_to_object(row: &rusqlite::Row<'_>) -> rusqlite::Result<ObjectInfo> {
+        Ok(ObjectInfo {
+            bucket_key: row.get(0)?,
+            object_key: row.get(1)?,
+            object_id: row.get(2)?,
+            sha1: row.get(3)?,
+            size: row.get::<_, i64>(4)? as u64,
+            content_type: row.get(5)?,
+            location: row.get(6)?,
+        })
     }
 }

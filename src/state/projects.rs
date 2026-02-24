@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
-use dashmap::DashMap;
+use crate::state::db::Db;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Hub information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,97 +24,117 @@ pub struct ProjectInfo {
 
 /// Data Management state
 pub struct ProjectState {
-    hubs: DashMap<String, HubInfo>,
-    projects: DashMap<String, ProjectInfo>,
-    /// Map of hub_id -> project_ids
-    hub_projects: DashMap<String, Vec<String>>,
+    db: Arc<Db>,
 }
 
 impl ProjectState {
-    pub fn new() -> Self {
-        let state = Self {
-            hubs: DashMap::new(),
-            projects: DashMap::new(),
-            hub_projects: DashMap::new(),
-        };
-
-        // Initialize with some default data
-        state.init_defaults();
+    pub fn new(db: Arc<Db>) -> Self {
+        let state = Self { db };
+        state.seed();
         state
     }
 
-    fn init_defaults(&self) {
-        let hub_id = "b.default-hub".to_string();
-        let hub = HubInfo {
-            id: hub_id.clone(),
-            name: "Default Hub".to_string(),
-            region: "US".to_string(),
-        };
-        self.hubs.insert(hub_id.clone(), hub);
-
-        let project_id = "b.default-project".to_string();
-        let project = ProjectInfo {
-            id: project_id.clone(),
-            hub_id: hub_id.clone(),
-            name: "Default Project".to_string(),
-        };
-        self.projects.insert(project_id.clone(), project);
-        self.hub_projects
-            .entry(hub_id)
-            .or_default()
-            .push(project_id);
+    fn seed(&self) {
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO hubs (id, name, region) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["b.default-hub", "Default Hub", "US"],
+        )
+        .expect("failed to seed hub");
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (id, hub_id, name) VALUES (?1, ?2, ?3)",
+            rusqlite::params!["b.default-project", "b.default-hub", "Default Project"],
+        )
+        .expect("failed to seed project");
     }
 
     /// List all hubs
     pub fn list_hubs(&self) -> Vec<HubInfo> {
-        self.hubs.iter().map(|h| h.value().clone()).collect()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare("SELECT id, name, region FROM hubs")
+            .expect("failed to prepare list hubs");
+        stmt.query_map([], |row| {
+            Ok(HubInfo {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                region: row.get(2)?,
+            })
+        })
+        .expect("failed to list hubs")
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Get a hub by ID
     pub fn get_hub(&self, hub_id: &str) -> Option<HubInfo> {
-        self.hubs.get(hub_id).map(|h| h.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, name, region FROM hubs WHERE id = ?1",
+            rusqlite::params![hub_id],
+            |row| {
+                Ok(HubInfo {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    region: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .expect("failed to get hub")
     }
 
     /// List projects in a hub
     pub fn list_projects(&self, hub_id: &str) -> Vec<ProjectInfo> {
-        self.hub_projects
-            .get(hub_id)
-            .map(|project_ids| {
-                project_ids
-                    .iter()
-                    .filter_map(|id| self.projects.get(id).map(|p| p.clone()))
-                    .collect()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare("SELECT id, hub_id, name FROM projects WHERE hub_id = ?1")
+            .expect("failed to prepare list projects");
+        stmt.query_map(rusqlite::params![hub_id], |row| {
+            Ok(ProjectInfo {
+                id: row.get(0)?,
+                hub_id: row.get(1)?,
+                name: row.get(2)?,
             })
-            .unwrap_or_default()
+        })
+        .expect("failed to list projects")
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Get a project by ID
     pub fn get_project(&self, project_id: &str) -> Option<ProjectInfo> {
-        self.projects.get(project_id).map(|p| p.clone())
-    }
-
-    /// Restore a hub from a persistence snapshot
-    pub fn restore_hub(&self, hub: HubInfo) {
-        self.hubs.insert(hub.id.clone(), hub);
-    }
-
-    /// Restore a project from a persistence snapshot
-    pub fn restore_project(&self, project: ProjectInfo) {
-        self.hub_projects
-            .entry(project.hub_id.clone())
-            .or_default()
-            .push(project.id.clone());
-        self.projects.insert(project.id.clone(), project);
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, hub_id, name FROM projects WHERE id = ?1",
+            rusqlite::params![project_id],
+            |row| {
+                Ok(ProjectInfo {
+                    id: row.get(0)?,
+                    hub_id: row.get(1)?,
+                    name: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .expect("failed to get project")
     }
 
     /// List all projects across all hubs
     pub fn list_all_projects(&self) -> Vec<ProjectInfo> {
-        self.projects.iter().map(|p| p.value().clone()).collect()
-    }
-}
-
-impl Default for ProjectState {
-    fn default() -> Self {
-        Self::new()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare("SELECT id, hub_id, name FROM projects")
+            .expect("failed to prepare list all projects");
+        stmt.query_map([], |row| {
+            Ok(ProjectInfo {
+                id: row.get(0)?,
+                hub_id: row.get(1)?,
+                name: row.get(2)?,
+            })
+        })
+        .expect("failed to list all projects")
+        .filter_map(|r| r.ok())
+        .collect()
     }
 }

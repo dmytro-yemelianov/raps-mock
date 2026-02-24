@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
-use dashmap::DashMap;
+use crate::state::db::Db;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// RFI information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,123 +65,104 @@ pub struct ChecklistTemplate {
 
 /// Unified ACC state for RFIs, Assets, Submittals, and Checklists
 pub struct AccState {
-    /// Map of project_id -> rfi_id -> RfiInfo
-    rfis: DashMap<String, DashMap<String, RfiInfo>>,
-    /// Map of project_id -> asset_id -> AssetInfo
-    assets: DashMap<String, DashMap<String, AssetInfo>>,
-    /// Map of project_id -> submittal_id -> SubmittalInfo
-    submittals: DashMap<String, DashMap<String, SubmittalInfo>>,
-    /// Map of project_id -> checklist_id -> ChecklistInfo
-    checklists: DashMap<String, DashMap<String, ChecklistInfo>>,
+    db: Arc<Db>,
 }
 
 impl AccState {
-    pub fn new() -> Self {
-        let state = Self {
-            rfis: DashMap::new(),
-            assets: DashMap::new(),
-            submittals: DashMap::new(),
-            checklists: DashMap::new(),
-        };
-        // Pre-seed well-known demo data used by raps-examples tests
+    pub fn new(db: Arc<Db>) -> Self {
+        let state = Self { db };
+        state.seed();
+        state
+    }
+
+    fn seed(&self) {
         let demo_project = "mock-project-001";
         let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.db.conn();
 
         // RFIs
-        {
-            let rfis = state.rfis.entry(demo_project.to_string()).or_default();
-            for (id, title) in [
-                ("rfi-demo-001", "Demo RFI - MEP Routing"),
-                ("demo-struct-eng-001", "Structural RFI"),
-                ("lc-rfi-001", "Lifecycle RFI"),
-            ] {
-                rfis.insert(
-                    id.to_string(),
-                    RfiInfo {
-                        id: id.to_string(),
-                        project_id: demo_project.to_string(),
-                        title: title.to_string(),
-                        description: None,
-                        status: "open".to_string(),
-                        created_at: now.clone(),
-                    },
-                );
-            }
+        for (id, title) in [
+            ("rfi-demo-001", "Demo RFI - MEP Routing"),
+            ("demo-struct-eng-001", "Structural RFI"),
+            ("lc-rfi-001", "Lifecycle RFI"),
+        ] {
+            conn.execute(
+                "INSERT OR IGNORE INTO rfis (id, project_id, title, description, status, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, demo_project, title, Option::<String>::None, "open", now],
+            )
+            .expect("failed to seed rfi");
         }
 
         // Assets
-        {
-            let assets = state.assets.entry(demo_project.to_string()).or_default();
-            for (id, title) in [
-                ("ast-demo-001", "Demo Asset - HVAC Unit"),
-                ("ast-chiller-01", "Chiller CH-01"),
-                ("ast-chiller-02", "Chiller CH-02"),
-            ] {
-                assets.insert(
-                    id.to_string(),
-                    AssetInfo {
-                        id: id.to_string(),
-                        project_id: demo_project.to_string(),
-                        title: title.to_string(),
-                        description: Some(title.to_string()),
-                        status: "active".to_string(),
-                        created_at: now.clone(),
-                    },
-                );
-            }
+        for (id, title) in [
+            ("ast-demo-001", "Demo Asset - HVAC Unit"),
+            ("ast-chiller-01", "Chiller CH-01"),
+            ("ast-chiller-02", "Chiller CH-02"),
+        ] {
+            conn.execute(
+                "INSERT OR IGNORE INTO assets (id, project_id, title, description, status, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, demo_project, title, Some(title), "active", now],
+            )
+            .expect("failed to seed asset");
         }
 
         // Submittals
-        {
-            let submittals = state.submittals.entry(demo_project.to_string()).or_default();
-            for (id, title) in [
-                ("sub-demo-001", "Demo Submittal - Concrete Mix"),
-                ("lc-sub-001", "Lifecycle Submittal"),
-            ] {
-                submittals.insert(
-                    id.to_string(),
-                    SubmittalInfo {
-                        id: id.to_string(),
-                        project_id: demo_project.to_string(),
-                        title: title.to_string(),
-                        description: None,
-                        status: "waiting".to_string(),
-                        created_at: now.clone(),
-                    },
-                );
-            }
+        for (id, title) in [
+            ("sub-demo-001", "Demo Submittal - Concrete Mix"),
+            ("lc-sub-001", "Lifecycle Submittal"),
+        ] {
+            conn.execute(
+                "INSERT OR IGNORE INTO submittals (id, project_id, title, description, status, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, demo_project, title, Option::<String>::None, "waiting", now],
+            )
+            .expect("failed to seed submittal");
         }
 
         // Checklists
-        {
-            let checklists = state.checklists.entry(demo_project.to_string()).or_default();
-            checklists.insert(
-                "chk-demo-001".to_string(),
-                ChecklistInfo {
-                    id: "chk-demo-001".to_string(),
-                    project_id: demo_project.to_string(),
-                    title: "Demo Checklist - Pre-Pour Inspection".to_string(),
-                    description: None,
-                    status: "not_started".to_string(),
-                    created_at: now.clone(),
-                },
-            );
-        }
-
-        state
+        conn.execute(
+            "INSERT OR IGNORE INTO checklists (id, project_id, title, description, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "chk-demo-001",
+                demo_project,
+                "Demo Checklist - Pre-Pour Inspection",
+                Option::<String>::None,
+                "not_started",
+                now,
+            ],
+        )
+        .expect("failed to seed checklist");
     }
 
     // ---- RFIs ----
 
     pub fn list_rfis(&self, project_id: &str) -> Vec<RfiInfo> {
-        self.rfis
-            .get(project_id)
-            .map(|items| items.iter().map(|r| r.value().clone()).collect())
-            .unwrap_or_default()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, description, status, created_at
+                 FROM rfis WHERE project_id = ?1",
+            )
+            .expect("failed to prepare list rfis");
+        stmt.query_map(rusqlite::params![project_id], Self::row_to_rfi)
+            .expect("failed to list rfis")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_rfi(&self, project_id: &str, rfi_id: &str) -> Option<RfiInfo> {
-        self.rfis.get(project_id)?.get(rfi_id).map(|r| r.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, project_id, title, description, status, created_at
+             FROM rfis WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![rfi_id, project_id],
+            Self::row_to_rfi,
+        )
+        .optional()
+        .expect("failed to get rfi")
     }
 
     pub fn create_rfi(
@@ -198,8 +181,20 @@ impl AccState {
             status: "open".to_string(),
             created_at: now,
         };
-        let project_rfis = self.rfis.entry(project_id).or_default();
-        project_rfis.insert(id, rfi.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO rfis (id, project_id, title, description, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                rfi.id,
+                rfi.project_id,
+                rfi.title,
+                rfi.description,
+                rfi.status,
+                rfi.created_at
+            ],
+        )
+        .expect("failed to create rfi");
         rfi
     }
 
@@ -211,41 +206,62 @@ impl AccState {
         description: Option<String>,
         status: Option<String>,
     ) -> Option<RfiInfo> {
-        let project_rfis = self.rfis.get(project_id)?;
-        let mut rfi = project_rfis.get_mut(rfi_id)?;
-        if let Some(t) = title {
-            rfi.title = t;
-        }
-        if let Some(d) = description {
-            rfi.description = Some(d);
-        }
-        if let Some(s) = status {
-            rfi.status = s;
-        }
-        Some(rfi.clone())
+        let current = self.get_rfi(project_id, rfi_id)?;
+        let new_title = title.unwrap_or(current.title);
+        let new_desc = description.or(current.description);
+        let new_status = status.unwrap_or(current.status);
+        let conn = self.db.conn();
+        conn.execute(
+            "UPDATE rfis SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
+            rusqlite::params![new_title, new_desc, new_status, rfi_id, project_id],
+        )
+        .expect("failed to update rfi");
+        Some(RfiInfo {
+            id: current.id,
+            project_id: current.project_id,
+            title: new_title,
+            description: new_desc,
+            status: new_status,
+            created_at: current.created_at,
+        })
     }
 
     pub fn delete_rfi(&self, project_id: &str, rfi_id: &str) -> bool {
-        self.rfis
-            .get(project_id)
-            .map(|items| items.remove(rfi_id).is_some())
-            .unwrap_or(false)
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM rfis WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![rfi_id, project_id],
+        )
+        .expect("failed to delete rfi")
+            > 0
     }
 
     // ---- Assets ----
 
     pub fn list_assets(&self, project_id: &str) -> Vec<AssetInfo> {
-        self.assets
-            .get(project_id)
-            .map(|items| items.iter().map(|a| a.value().clone()).collect())
-            .unwrap_or_default()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, description, status, created_at
+                 FROM assets WHERE project_id = ?1",
+            )
+            .expect("failed to prepare list assets");
+        stmt.query_map(rusqlite::params![project_id], Self::row_to_asset)
+            .expect("failed to list assets")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_asset(&self, project_id: &str, asset_id: &str) -> Option<AssetInfo> {
-        self.assets
-            .get(project_id)?
-            .get(asset_id)
-            .map(|a| a.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, project_id, title, description, status, created_at
+             FROM assets WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![asset_id, project_id],
+            Self::row_to_asset,
+        )
+        .optional()
+        .expect("failed to get asset")
     }
 
     pub fn create_asset(
@@ -264,8 +280,20 @@ impl AccState {
             status: "active".to_string(),
             created_at: now,
         };
-        let project_assets = self.assets.entry(project_id).or_default();
-        project_assets.insert(id, asset.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO assets (id, project_id, title, description, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                asset.id,
+                asset.project_id,
+                asset.title,
+                asset.description,
+                asset.status,
+                asset.created_at
+            ],
+        )
+        .expect("failed to create asset");
         asset
     }
 
@@ -277,41 +305,62 @@ impl AccState {
         description: Option<String>,
         status: Option<String>,
     ) -> Option<AssetInfo> {
-        let project_assets = self.assets.get(project_id)?;
-        let mut asset = project_assets.get_mut(asset_id)?;
-        if let Some(t) = title {
-            asset.title = t;
-        }
-        if let Some(d) = description {
-            asset.description = Some(d);
-        }
-        if let Some(s) = status {
-            asset.status = s;
-        }
-        Some(asset.clone())
+        let current = self.get_asset(project_id, asset_id)?;
+        let new_title = title.unwrap_or(current.title);
+        let new_desc = description.or(current.description);
+        let new_status = status.unwrap_or(current.status);
+        let conn = self.db.conn();
+        conn.execute(
+            "UPDATE assets SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
+            rusqlite::params![new_title, new_desc, new_status, asset_id, project_id],
+        )
+        .expect("failed to update asset");
+        Some(AssetInfo {
+            id: current.id,
+            project_id: current.project_id,
+            title: new_title,
+            description: new_desc,
+            status: new_status,
+            created_at: current.created_at,
+        })
     }
 
     pub fn delete_asset(&self, project_id: &str, asset_id: &str) -> bool {
-        self.assets
-            .get(project_id)
-            .map(|items| items.remove(asset_id).is_some())
-            .unwrap_or(false)
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM assets WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![asset_id, project_id],
+        )
+        .expect("failed to delete asset")
+            > 0
     }
 
     // ---- Submittals ----
 
     pub fn list_submittals(&self, project_id: &str) -> Vec<SubmittalInfo> {
-        self.submittals
-            .get(project_id)
-            .map(|items| items.iter().map(|s| s.value().clone()).collect())
-            .unwrap_or_default()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, description, status, created_at
+                 FROM submittals WHERE project_id = ?1",
+            )
+            .expect("failed to prepare list submittals");
+        stmt.query_map(rusqlite::params![project_id], Self::row_to_submittal)
+            .expect("failed to list submittals")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_submittal(&self, project_id: &str, submittal_id: &str) -> Option<SubmittalInfo> {
-        self.submittals
-            .get(project_id)?
-            .get(submittal_id)
-            .map(|s| s.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, project_id, title, description, status, created_at
+             FROM submittals WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![submittal_id, project_id],
+            Self::row_to_submittal,
+        )
+        .optional()
+        .expect("failed to get submittal")
     }
 
     pub fn create_submittal(
@@ -330,8 +379,20 @@ impl AccState {
             status: "waiting".to_string(),
             created_at: now,
         };
-        let project_submittals = self.submittals.entry(project_id).or_default();
-        project_submittals.insert(id, submittal.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO submittals (id, project_id, title, description, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                submittal.id,
+                submittal.project_id,
+                submittal.title,
+                submittal.description,
+                submittal.status,
+                submittal.created_at
+            ],
+        )
+        .expect("failed to create submittal");
         submittal
     }
 
@@ -343,41 +404,62 @@ impl AccState {
         description: Option<String>,
         status: Option<String>,
     ) -> Option<SubmittalInfo> {
-        let project_submittals = self.submittals.get(project_id)?;
-        let mut submittal = project_submittals.get_mut(submittal_id)?;
-        if let Some(t) = title {
-            submittal.title = t;
-        }
-        if let Some(d) = description {
-            submittal.description = Some(d);
-        }
-        if let Some(s) = status {
-            submittal.status = s;
-        }
-        Some(submittal.clone())
+        let current = self.get_submittal(project_id, submittal_id)?;
+        let new_title = title.unwrap_or(current.title);
+        let new_desc = description.or(current.description);
+        let new_status = status.unwrap_or(current.status);
+        let conn = self.db.conn();
+        conn.execute(
+            "UPDATE submittals SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
+            rusqlite::params![new_title, new_desc, new_status, submittal_id, project_id],
+        )
+        .expect("failed to update submittal");
+        Some(SubmittalInfo {
+            id: current.id,
+            project_id: current.project_id,
+            title: new_title,
+            description: new_desc,
+            status: new_status,
+            created_at: current.created_at,
+        })
     }
 
     pub fn delete_submittal(&self, project_id: &str, submittal_id: &str) -> bool {
-        self.submittals
-            .get(project_id)
-            .map(|items| items.remove(submittal_id).is_some())
-            .unwrap_or(false)
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM submittals WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![submittal_id, project_id],
+        )
+        .expect("failed to delete submittal")
+            > 0
     }
 
     // ---- Checklists ----
 
     pub fn list_checklists(&self, project_id: &str) -> Vec<ChecklistInfo> {
-        self.checklists
-            .get(project_id)
-            .map(|items| items.iter().map(|c| c.value().clone()).collect())
-            .unwrap_or_default()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, project_id, title, description, status, created_at
+                 FROM checklists WHERE project_id = ?1",
+            )
+            .expect("failed to prepare list checklists");
+        stmt.query_map(rusqlite::params![project_id], Self::row_to_checklist)
+            .expect("failed to list checklists")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn get_checklist(&self, project_id: &str, checklist_id: &str) -> Option<ChecklistInfo> {
-        self.checklists
-            .get(project_id)?
-            .get(checklist_id)
-            .map(|c| c.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT id, project_id, title, description, status, created_at
+             FROM checklists WHERE id = ?1 AND project_id = ?2",
+            rusqlite::params![checklist_id, project_id],
+            Self::row_to_checklist,
+        )
+        .optional()
+        .expect("failed to get checklist")
     }
 
     pub fn create_checklist(
@@ -396,8 +478,20 @@ impl AccState {
             status: "not_started".to_string(),
             created_at: now,
         };
-        let project_checklists = self.checklists.entry(project_id).or_default();
-        project_checklists.insert(id, checklist.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO checklists (id, project_id, title, description, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                checklist.id,
+                checklist.project_id,
+                checklist.title,
+                checklist.description,
+                checklist.status,
+                checklist.created_at
+            ],
+        )
+        .expect("failed to create checklist");
         checklist
     }
 
@@ -409,18 +503,24 @@ impl AccState {
         description: Option<String>,
         status: Option<String>,
     ) -> Option<ChecklistInfo> {
-        let project_checklists = self.checklists.get(project_id)?;
-        let mut checklist = project_checklists.get_mut(checklist_id)?;
-        if let Some(t) = title {
-            checklist.title = t;
-        }
-        if let Some(d) = description {
-            checklist.description = Some(d);
-        }
-        if let Some(s) = status {
-            checklist.status = s;
-        }
-        Some(checklist.clone())
+        let current = self.get_checklist(project_id, checklist_id)?;
+        let new_title = title.unwrap_or(current.title);
+        let new_desc = description.or(current.description);
+        let new_status = status.unwrap_or(current.status);
+        let conn = self.db.conn();
+        conn.execute(
+            "UPDATE checklists SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
+            rusqlite::params![new_title, new_desc, new_status, checklist_id, project_id],
+        )
+        .expect("failed to update checklist");
+        Some(ChecklistInfo {
+            id: current.id,
+            project_id: current.project_id,
+            title: new_title,
+            description: new_desc,
+            status: new_status,
+            created_at: current.created_at,
+        })
     }
 
     /// Return a static list of checklist templates
@@ -443,10 +543,50 @@ impl AccState {
             },
         ]
     }
-}
 
-impl Default for AccState {
-    fn default() -> Self {
-        Self::new()
+    // ---- Row mappers ----
+
+    fn row_to_rfi(row: &rusqlite::Row<'_>) -> rusqlite::Result<RfiInfo> {
+        Ok(RfiInfo {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            status: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    }
+
+    fn row_to_asset(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetInfo> {
+        Ok(AssetInfo {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            status: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    }
+
+    fn row_to_submittal(row: &rusqlite::Row<'_>) -> rusqlite::Result<SubmittalInfo> {
+        Ok(SubmittalInfo {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            status: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    }
+
+    fn row_to_checklist(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChecklistInfo> {
+        Ok(ChecklistInfo {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            status: row.get(4)?,
+            created_at: row.get(5)?,
+        })
     }
 }

@@ -70,9 +70,7 @@ pub fn build_router(
     // Health check (outside auth middleware so it bypasses auth)
     router = router.route(
         "/health",
-        get(|| async {
-            axum::Json(serde_json::json!({"status": "ok", "service": "raps-mock"}))
-        }),
+        get(|| async { axum::Json(serde_json::json!({"status": "ok", "service": "raps-mock"})) }),
     );
 
     // User info endpoint (outside auth middleware, used by raps auth login --token)
@@ -107,28 +105,31 @@ fn register_hardcoded_routes(
         router,
         "/authentication/v2/token",
         HttpMethod::Post,
-        post(move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
-            let state = s.clone();
-            async move {
-                let content_type = headers
-                    .get(axum::http::header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                let parsed: Value = if content_type.contains("application/x-www-form-urlencoded") {
-                    let text = String::from_utf8_lossy(&body);
-                    let mut map = serde_json::Map::new();
-                    for pair in text.split('&') {
-                        if let Some((k, v)) = pair.split_once('=') {
-                            map.insert(k.to_string(), Value::String(v.to_string()));
-                        }
-                    }
-                    Value::Object(map)
-                } else {
-                    serde_json::from_slice(&body).unwrap_or_default()
-                };
-                routes::handle_auth_token(state, parsed).await
-            }
-        }),
+        post(
+            move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                let state = s.clone();
+                async move {
+                    let content_type = headers
+                        .get(axum::http::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    let parsed: Value =
+                        if content_type.contains("application/x-www-form-urlencoded") {
+                            let text = String::from_utf8_lossy(&body);
+                            let mut map = serde_json::Map::new();
+                            for pair in text.split('&') {
+                                if let Some((k, v)) = pair.split_once('=') {
+                                    map.insert(k.to_string(), Value::String(v.to_string()));
+                                }
+                            }
+                            Value::Object(map)
+                        } else {
+                            serde_json::from_slice(&body).unwrap_or_default()
+                        };
+                    routes::handle_auth_token(state, parsed).await
+                }
+            },
+        ),
     );
 
     // OSS endpoints
@@ -195,10 +196,12 @@ fn register_hardcoded_routes(
         router,
         "/oss/v2/buckets/:bucket_key/objects/:object_key/details",
         HttpMethod::Get,
-        get(move |Path((bucket_key, object_key)): Path<(String, String)>| {
-            let state = s.clone();
-            async move { routes::handle_get_object_details(state, bucket_key, object_key).await }
-        }),
+        get(
+            move |Path((bucket_key, object_key)): Path<(String, String)>| {
+                let state = s.clone();
+                async move { routes::handle_get_object_details(state, bucket_key, object_key).await }
+            },
+        ),
     );
 
     // Object delete
@@ -211,6 +214,28 @@ fn register_hardcoded_routes(
             move |Path((bucket_key, object_key)): Path<(String, String)>| {
                 let state = s.clone();
                 async move { routes::handle_delete_object(state, bucket_key, object_key).await }
+            },
+        ),
+    );
+
+    // Object copy (PUT with x-ads-copy-from header)
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/oss/v2/buckets/:bucket_key/objects/:object_key",
+        HttpMethod::Put,
+        put(
+            move |Path((bucket_key, object_key)): Path<(String, String)>,
+                  headers: axum::http::HeaderMap| {
+                let state = s.clone();
+                async move {
+                    let copy_from = headers
+                        .get("x-ads-copy-from")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    routes::handle_copy_object(state, bucket_key, object_key, copy_from).await
+                }
             },
         ),
     );
@@ -299,12 +324,14 @@ fn register_hardcoded_routes(
         router,
         "/oss/v2/buckets/:bucket_key/objects/:object_key/signeds3download/mock-s3",
         HttpMethod::Get,
-        get(move |Path((bucket_key, object_key)): Path<(String, String)>| {
-            let state = s.clone();
-            async move {
-                routes::handle_signed_s3_download_content(state, bucket_key, object_key).await
-            }
-        }),
+        get(
+            move |Path((bucket_key, object_key)): Path<(String, String)>| {
+                let state = s.clone();
+                async move {
+                    routes::handle_signed_s3_download_content(state, bucket_key, object_key).await
+                }
+            },
+        ),
     );
 
     // Data Management endpoints
@@ -362,6 +389,54 @@ fn register_hardcoded_routes(
             let state = s.clone();
             async move { routes::handle_get_manifest(state, urn).await }
         }),
+    );
+
+    // Model Derivative Metadata endpoints
+    // NOTE: Parameter name `:model_guid` must match OpenAPI spec to avoid axum router conflicts
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/modelderivative/v2/designdata/:urn/metadata",
+        HttpMethod::Get,
+        get(move |Path(urn): Path<String>| {
+            let state = s.clone();
+            async move { routes::handle_get_metadata(state, urn).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/modelderivative/v2/designdata/:urn/metadata/:model_guid",
+        HttpMethod::Get,
+        get(move |Path((urn, guid)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_get_object_tree(state, urn, guid).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/modelderivative/v2/designdata/:urn/metadata/:model_guid/properties",
+        HttpMethod::Get,
+        get(move |Path((urn, guid)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_get_properties(state, urn, guid).await }
+        }),
+    );
+
+    let s = state.clone();
+    router = add_route(
+        router,
+        "/modelderivative/v2/designdata/:urn/metadata/:model_guid/properties:query",
+        HttpMethod::Post,
+        post(
+            move |Path((urn, guid)): Path<(String, String)>, Json(body): Json<Value>| {
+                let state = s.clone();
+                async move { routes::handle_query_properties(state, urn, guid, body).await }
+            },
+        ),
     );
 
     // Construction/ACC Issues endpoints
@@ -422,12 +497,9 @@ fn register_hardcoded_routes(
         "/construction/issues/v1/projects/:project_id/issues/:issue_id",
         HttpMethod::Patch,
         patch(
-            move |Path((project_id, issue_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, issue_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_update_issue(state, project_id, issue_id, body).await
-                }
+                async move { routes::handle_update_issue(state, project_id, issue_id, body).await }
             },
         ),
     );
@@ -455,9 +527,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((project_id, issue_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_list_issue_comments(state, project_id, issue_id).await
-                }
+                async move { routes::handle_list_issue_comments(state, project_id, issue_id).await }
             },
         ),
     );
@@ -469,8 +539,7 @@ fn register_hardcoded_routes(
         "/construction/issues/v1/projects/:project_id/issues/:issue_id/comments",
         HttpMethod::Post,
         post(
-            move |Path((project_id, issue_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, issue_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
                 async move {
                     routes::handle_create_issue_comment(state, project_id, issue_id, body).await
@@ -505,9 +574,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((project_id, issue_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_list_issue_attachments(state, project_id, issue_id).await
-                }
+                async move { routes::handle_list_issue_attachments(state, project_id, issue_id).await }
             },
         ),
     );
@@ -542,12 +609,10 @@ fn register_hardcoded_routes(
         router,
         "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
         HttpMethod::Get,
-        get(
-            move |Path((project_id, rfi_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_get_rfi(state, project_id, rfi_id).await }
-            },
-        ),
+        get(move |Path((project_id, rfi_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_get_rfi(state, project_id, rfi_id).await }
+        }),
     );
 
     let s = state.clone();
@@ -556,8 +621,7 @@ fn register_hardcoded_routes(
         "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
         HttpMethod::Patch,
         patch(
-            move |Path((project_id, rfi_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, rfi_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
                 async move { routes::handle_update_rfi(state, project_id, rfi_id, body).await }
             },
@@ -569,12 +633,10 @@ fn register_hardcoded_routes(
         router,
         "/construction/rfis/v2/projects/:project_id/rfis/:rfi_id",
         HttpMethod::Delete,
-        delete(
-            move |Path((project_id, rfi_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_delete_rfi(state, project_id, rfi_id).await }
-            },
-        ),
+        delete(move |Path((project_id, rfi_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_delete_rfi(state, project_id, rfi_id).await }
+        }),
     );
 
     // ACC Assets endpoints
@@ -621,12 +683,9 @@ fn register_hardcoded_routes(
         "/construction/assets/v1/projects/:project_id/assets/:asset_id",
         HttpMethod::Patch,
         patch(
-            move |Path((project_id, asset_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, asset_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_update_asset(state, project_id, asset_id, body).await
-                }
+                async move { routes::handle_update_asset(state, project_id, asset_id, body).await }
             },
         ),
     );
@@ -677,9 +736,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((project_id, submittal_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_get_submittal(state, project_id, submittal_id).await
-                }
+                async move { routes::handle_get_submittal(state, project_id, submittal_id).await }
             },
         ),
     );
@@ -708,9 +765,7 @@ fn register_hardcoded_routes(
         delete(
             move |Path((project_id, submittal_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_delete_submittal(state, project_id, submittal_id).await
-                }
+                async move { routes::handle_delete_submittal(state, project_id, submittal_id).await }
             },
         ),
     );
@@ -748,9 +803,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((project_id, checklist_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_get_checklist(state, project_id, checklist_id).await
-                }
+                async move { routes::handle_get_checklist(state, project_id, checklist_id).await }
             },
         ),
     );
@@ -885,9 +938,7 @@ fn register_hardcoded_routes(
         post(
             move |Path(bundle_id): Path<String>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_da_create_appbundle_alias(state, bundle_id, body).await
-                }
+                async move { routes::handle_da_create_appbundle_alias(state, bundle_id, body).await }
             },
         ),
     );
@@ -933,9 +984,7 @@ fn register_hardcoded_routes(
         post(
             move |Path(activity_id): Path<String>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_da_create_activity_alias(state, activity_id, body).await
-                }
+                async move { routes::handle_da_create_activity_alias(state, activity_id, body).await }
             },
         ),
     );
@@ -973,6 +1022,18 @@ fn register_hardcoded_routes(
         }),
     );
 
+    // DA Mock S3 Upload endpoint (for appbundle upload simulation)
+    router = add_route(
+        router,
+        "/mock-s3-upload/:bundle_id",
+        HttpMethod::Post,
+        post(
+            move |Path(bundle_id): Path<String>, body: axum::body::Bytes| async move {
+                routes::handle_mock_s3_upload(bundle_id, body).await
+            },
+        ),
+    );
+
     // Reality Capture endpoints (base: /photo-to-3d/v1)
     let s = state.clone();
     router = add_route(
@@ -1006,8 +1067,9 @@ fn register_hardcoded_routes(
                                 if let Some((k, v)) = pair.split_once('=') {
                                     // Form-encoded + means space; decode after replacing
                                     let v_fixed = v.replace('+', " ");
-                                    let decoded =
-                                        urlencoding::decode(&v_fixed).unwrap_or_default().to_string();
+                                    let decoded = urlencoding::decode(&v_fixed)
+                                        .unwrap_or_default()
+                                        .to_string();
                                     map.insert(k.to_string(), Value::String(decoded));
                                 }
                             }
@@ -1154,12 +1216,9 @@ fn register_hardcoded_routes(
         "/construction/admin/v1/accounts/:account_id/users/:user_id",
         HttpMethod::Patch,
         patch(
-            move |Path((account_id, user_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((account_id, user_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_admin_update_user(state, account_id, user_id, body).await
-                }
+                async move { routes::handle_admin_update_user(state, account_id, user_id, body).await }
             },
         ),
     );
@@ -1169,12 +1228,10 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/accounts/:account_id/users/:user_id",
         HttpMethod::Delete,
-        delete(
-            move |Path((account_id, user_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_admin_delete_user(state, account_id, user_id).await }
-            },
-        ),
+        delete(move |Path((account_id, user_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_admin_delete_user(state, account_id, user_id).await }
+        }),
     );
 
     // Admin Projects endpoints
@@ -1210,9 +1267,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((account_id, project_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_admin_get_project(state, account_id, project_id).await
-                }
+                async move { routes::handle_admin_get_project(state, account_id, project_id).await }
             },
         ),
     );
@@ -1267,14 +1322,10 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/projects/:project_id/users/:user_id",
         HttpMethod::Get,
-        get(
-            move |Path((project_id, user_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move {
-                    routes::handle_admin_get_project_user(state, project_id, user_id).await
-                }
-            },
-        ),
+        get(move |Path((project_id, user_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_admin_get_project_user(state, project_id, user_id).await }
+        }),
     );
 
     let s = state.clone();
@@ -1285,9 +1336,7 @@ fn register_hardcoded_routes(
         post(
             move |Path(project_id): Path<String>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_admin_add_project_user(state, project_id, body).await
-                }
+                async move { routes::handle_admin_add_project_user(state, project_id, body).await }
             },
         ),
     );
@@ -1309,12 +1358,10 @@ fn register_hardcoded_routes(
         "/construction/admin/v1/projects/:project_id/users/:user_id",
         HttpMethod::Patch,
         patch(
-            move |Path((project_id, user_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, user_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
                 async move {
-                    routes::handle_admin_update_project_user(state, project_id, user_id, body)
-                        .await
+                    routes::handle_admin_update_project_user(state, project_id, user_id, body).await
                 }
             },
         ),
@@ -1325,14 +1372,10 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/projects/:project_id/users/:user_id",
         HttpMethod::Delete,
-        delete(
-            move |Path((project_id, user_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move {
-                    routes::handle_admin_delete_project_user(state, project_id, user_id).await
-                }
-            },
-        ),
+        delete(move |Path((project_id, user_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_admin_delete_project_user(state, project_id, user_id).await }
+        }),
     );
 
     // HQ Companies
@@ -1356,9 +1399,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((project_id, folder_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_dm_list_folder_contents(state, project_id, folder_id).await
-                }
+                async move { routes::handle_dm_list_folder_contents(state, project_id, folder_id).await }
             },
         ),
     );
@@ -1401,9 +1442,7 @@ fn register_hardcoded_routes(
             move |Path((project_id, folder_id)): Path<(String, String)>,
                   Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_dm_update_folder(state, project_id, folder_id, body).await
-                }
+                async move { routes::handle_dm_update_folder(state, project_id, folder_id, body).await }
             },
         ),
     );
@@ -1489,12 +1528,10 @@ fn register_hardcoded_routes(
         router,
         "/data/v1/projects/:project_id/items/:item_id",
         HttpMethod::Get,
-        get(
-            move |Path((project_id, item_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_dm_get_item(state, project_id, item_id).await }
-            },
-        ),
+        get(move |Path((project_id, item_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_dm_get_item(state, project_id, item_id).await }
+        }),
     );
 
     let s = state.clone();
@@ -1503,12 +1540,9 @@ fn register_hardcoded_routes(
         "/data/v1/projects/:project_id/items/:item_id",
         HttpMethod::Patch,
         patch(
-            move |Path((project_id, item_id)): Path<(String, String)>,
-                  Json(body): Json<Value>| {
+            move |Path((project_id, item_id)): Path<(String, String)>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_dm_update_item(state, project_id, item_id, body).await
-                }
+                async move { routes::handle_dm_update_item(state, project_id, item_id, body).await }
             },
         ),
     );
@@ -1518,12 +1552,10 @@ fn register_hardcoded_routes(
         router,
         "/data/v1/projects/:project_id/items/:item_id",
         HttpMethod::Delete,
-        delete(
-            move |Path((project_id, item_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_dm_delete_item(state, project_id, item_id).await }
-            },
-        ),
+        delete(move |Path((project_id, item_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_dm_delete_item(state, project_id, item_id).await }
+        }),
     );
 
     let s = state.clone();
@@ -1531,14 +1563,10 @@ fn register_hardcoded_routes(
         router,
         "/data/v1/projects/:project_id/items/:item_id/versions",
         HttpMethod::Get,
-        get(
-            move |Path((project_id, item_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move {
-                    routes::handle_dm_list_item_versions(state, project_id, item_id).await
-                }
-            },
-        ),
+        get(move |Path((project_id, item_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_dm_list_item_versions(state, project_id, item_id).await }
+        }),
     );
 
     // Data Management: Project info
@@ -1547,12 +1575,10 @@ fn register_hardcoded_routes(
         router,
         "/project/v1/hubs/:hub_id/projects/:project_id",
         HttpMethod::Get,
-        get(
-            move |Path((hub_id, project_id)): Path<(String, String)>| {
-                let state = s.clone();
-                async move { routes::handle_dm_get_project(state, hub_id, project_id).await }
-            },
-        ),
+        get(move |Path((hub_id, project_id)): Path<(String, String)>| {
+            let state = s.clone();
+            async move { routes::handle_dm_get_project(state, hub_id, project_id).await }
+        }),
     );
 
     // Data Management: Top folders (project/v1 path used by `raps project info`)
@@ -1564,9 +1590,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((_hub_id, _project_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_dm_list_top_folders(state, _project_id).await
-                }
+                async move { routes::handle_dm_list_top_folders(state, _project_id).await }
             },
         ),
     );
@@ -1591,9 +1615,7 @@ fn register_hardcoded_routes(
         post(
             move |Path(account_id): Path<String>, Json(body): Json<Value>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_create_project_template(state, account_id, body).await
-                }
+                async move { routes::handle_create_project_template(state, account_id, body).await }
             },
         ),
     );
@@ -1606,9 +1628,7 @@ fn register_hardcoded_routes(
         get(
             move |Path((account_id, template_id)): Path<(String, String)>| {
                 let state = s.clone();
-                async move {
-                    routes::handle_get_project_template(state, account_id, template_id).await
-                }
+                async move { routes::handle_get_project_template(state, account_id, template_id).await }
             },
         ),
     );

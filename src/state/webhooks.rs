@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
-use dashmap::DashMap;
+use crate::state::db::Db;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Webhook subscription information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,14 +29,12 @@ pub struct WebhookScope {
 
 /// Webhooks state
 pub struct WebhooksState {
-    subscriptions: DashMap<String, WebhookSubscription>,
+    db: Arc<Db>,
 }
 
 impl WebhooksState {
-    pub fn new() -> Self {
-        Self {
-            subscriptions: DashMap::new(),
-        }
+    pub fn new(db: Arc<Db>) -> Self {
+        Self { db }
     }
 
     /// Create a webhook subscription
@@ -59,37 +59,78 @@ impl WebhooksState {
             created_date: now,
         };
 
-        self.subscriptions.insert(hook_id, subscription.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO webhooks (hook_id, tenant, callback_url, event, system, scope_folder, scope_workflow, status, created_date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                subscription.hook_id,
+                subscription.tenant,
+                subscription.callback_url,
+                subscription.event,
+                subscription.system,
+                subscription.scope.folder,
+                subscription.scope.workflow,
+                subscription.status,
+                subscription.created_date,
+            ],
+        )
+        .expect("failed to create webhook");
         subscription
     }
 
     /// Get a subscription
     pub fn get_subscription(&self, hook_id: &str) -> Option<WebhookSubscription> {
-        self.subscriptions.get(hook_id).map(|s| s.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT hook_id, tenant, callback_url, event, system, scope_folder, scope_workflow, status, created_date
+             FROM webhooks WHERE hook_id = ?1",
+            rusqlite::params![hook_id],
+            Self::row_to_subscription,
+        )
+        .optional()
+        .expect("failed to get webhook")
     }
 
     /// List all subscriptions
     pub fn list_subscriptions(&self) -> Vec<WebhookSubscription> {
-        self.subscriptions
-            .iter()
-            .map(|s| s.value().clone())
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT hook_id, tenant, callback_url, event, system, scope_folder, scope_workflow, status, created_date FROM webhooks",
+            )
+            .expect("failed to prepare list webhooks");
+        stmt.query_map([], Self::row_to_subscription)
+            .expect("failed to list webhooks")
+            .filter_map(|r| r.ok())
             .collect()
     }
 
     /// Delete a subscription
     pub fn delete_subscription(&self, hook_id: &str) -> bool {
-        self.subscriptions.remove(hook_id).is_some()
+        let conn = self.db.conn();
+        let rows = conn
+            .execute(
+                "DELETE FROM webhooks WHERE hook_id = ?1",
+                rusqlite::params![hook_id],
+            )
+            .expect("failed to delete webhook");
+        rows > 0
     }
 
-    /// Restore a subscription from a persistence snapshot
-    pub fn restore(&self, subscription: WebhookSubscription) {
-        self.subscriptions
-            .insert(subscription.hook_id.clone(), subscription);
-    }
-}
-
-impl Default for WebhooksState {
-    fn default() -> Self {
-        Self::new()
+    fn row_to_subscription(row: &rusqlite::Row<'_>) -> rusqlite::Result<WebhookSubscription> {
+        Ok(WebhookSubscription {
+            hook_id: row.get(0)?,
+            tenant: row.get(1)?,
+            callback_url: row.get(2)?,
+            event: row.get(3)?,
+            system: row.get(4)?,
+            scope: WebhookScope {
+                folder: row.get(5)?,
+                workflow: row.get(6)?,
+            },
+            status: row.get(7)?,
+            created_date: row.get(8)?,
+        })
     }
 }

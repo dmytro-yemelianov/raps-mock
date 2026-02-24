@@ -16,9 +16,12 @@ pub async fn auth_middleware(
     request: Request,
     next: Next,
 ) -> Response {
-    // Skip auth for token endpoint and mock S3 signed URL endpoints
+    // Skip auth for token endpoint, mock S3 signed URL endpoints, and mock S3 upload
     let path = request.uri().path();
-    if path == "/authentication/v2/token" || path.ends_with("/mock-s3") {
+    if path == "/authentication/v2/token"
+        || path.ends_with("/mock-s3")
+        || path.starts_with("/mock-s3-upload/")
+    {
         return next.run(request).await;
     }
 

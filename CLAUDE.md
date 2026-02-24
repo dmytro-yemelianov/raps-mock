@@ -1,4 +1,4 @@
-﻿# CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -32,6 +32,7 @@ cargo clippy --all-targets --all-features -- -D warnings  # Lint with warnings a
 # Run the server
 cargo run -- --port 3000 --mode stateful
 cargo run -- --openapi-dir ../aps-sdk-openapi --port 3000 --verbose
+cargo run -- --db /tmp/mock.db --port 3000  # Persistent SQLite storage
 
 # Run example
 cargo run --example basic-usage
@@ -56,24 +57,37 @@ cargo run --example basic-usage
   - `generic.rs`: `GenericHandler` extracts example responses from OpenAPI specs (checks `example`, `examples`, schema example)
   - `custom.rs`: `CustomHandlerRegistry` for user-defined endpoint overrides
 
-- **`state/`**: In-memory storage for stateful mode (all use `dashmap` for concurrent access)
-  - `manager.rs`: `StateManager` holds `Arc<T>` references to all state modules
+- **`state/`**: SQLite-backed storage for stateful mode
+  - `db.rs`: `Db` wrapper around `Mutex<Connection>` — in-memory by default, file-backed with `--db`
+  - `manager.rs`: `StateManager` holds `Arc<T>` references to all state modules; `new()` for in-memory, `with_db(path)` for persistent
   - `auth.rs`: OAuth token generation and validation
   - `buckets.rs`: OSS bucket CRUD
-  - `objects.rs`: OSS object metadata
+  - `objects.rs`: OSS object metadata (composite PK: bucket_key + object_key)
   - `projects.rs`: Data Management hubs and projects
   - `translations.rs`: Model Derivative job tracking with status progression
-  - `issues.rs`: ACC Issues CRUD
+  - `issues.rs`: ACC Issues + Comments CRUD
   - `webhooks.rs`: Webhook subscription management
+  - `da.rs`: Design Automation (app bundles, activities, work items)
+  - `reality.rs`: Reality Capture photoscenes
+  - `acc.rs`: ACC RFIs, Assets, Submittals, Checklists
 
 - **`middleware/`**: axum layers for auth validation and CORS
 
 - **`testing.rs`**: `TestServer` helper that starts a mock server on a random port for integration tests. Auto-cleans up on drop.
 
+### State Persistence
+
+State is stored in SQLite (17 tables). Two modes:
+
+- **In-memory** (default): `StateManager::new()` — fast, no persistence, same as original DashMap behavior
+- **File-backed**: `StateManager::with_db(path)` via `--db <PATH>` — state survives restarts, WAL mode for performance
+
+Pre-seeded demo data uses `INSERT OR IGNORE` — idempotent on persistent databases.
+
 ### Operation Modes
 
 - **Stateless**: Returns fixed example responses from OpenAPI specs
-- **Stateful**: Maintains in-memory state, supports CRUD operations on mocked resources
+- **Stateful**: Maintains SQLite state, supports CRUD operations on mocked resources
 
 ### Library Usage
 
@@ -95,5 +109,5 @@ CI runs two jobs: `build-and-test` (format, clippy, build, test) and `aps-openap
 - Rust 1.88+
 - axum 0.7 (HTTP server)
 - tokio (async runtime)
-- dashmap (concurrent state storage)
+- rusqlite 0.32 bundled (SQLite state storage)
 - serde_yaml (OpenAPI spec parsing)

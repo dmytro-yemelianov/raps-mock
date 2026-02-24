@@ -5,6 +5,7 @@ pub mod acc;
 pub mod auth;
 pub mod buckets;
 pub mod da;
+pub mod db;
 pub mod issues;
 pub mod manager;
 pub mod objects;

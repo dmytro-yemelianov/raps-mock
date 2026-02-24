@@ -36,10 +36,11 @@ impl MockServer {
 
         // Create state manager if in stateful mode
         let state = if config.mode == MockMode::Stateful {
-            let state_manager = StateManager::new();
-            if let Some(ref state_file) = config.state_file {
-                state_manager.load_from_file(state_file)?;
-            }
+            let state_manager = if let Some(ref db_path) = config.db_path {
+                StateManager::with_db(db_path)
+            } else {
+                StateManager::new()
+            };
             Some(state_manager)
         } else {
             None

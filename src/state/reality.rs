@@ -3,8 +3,10 @@
 
 //! Reality Capture state: photoscenes.
 
-use dashmap::DashMap;
+use crate::state::db::Db;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PhotosceneInfo {
@@ -19,18 +21,25 @@ pub struct PhotosceneInfo {
 }
 
 pub struct RealityState {
-    photoscenes: DashMap<String, PhotosceneInfo>,
+    db: Arc<Db>,
 }
 
 impl RealityState {
-    pub fn new() -> Self {
-        Self {
-            photoscenes: DashMap::new(),
-        }
+    pub fn new(db: Arc<Db>) -> Self {
+        Self { db }
     }
 
     pub fn list_photoscenes(&self) -> Vec<PhotosceneInfo> {
-        self.photoscenes.iter().map(|r| r.value().clone()).collect()
+        let conn = self.db.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT photoscene_id, name, scene_type, convert_format, status, progress, progress_msg, scene_link FROM photoscenes",
+            )
+            .expect("failed to prepare list photoscenes");
+        stmt.query_map([], Self::row_to_photoscene)
+            .expect("failed to list photoscenes")
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     pub fn create_photoscene(
@@ -50,28 +59,69 @@ impl RealityState {
             progress_msg: None,
             scene_link: None,
         };
-        self.photoscenes.insert(id, info.clone());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO photoscenes (photoscene_id, name, scene_type, convert_format, status, progress, progress_msg, scene_link)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                info.photoscene_id,
+                info.name,
+                info.scene_type,
+                info.convert_format,
+                info.status,
+                info.progress,
+                info.progress_msg,
+                info.scene_link,
+            ],
+        )
+        .expect("failed to create photoscene");
         info
     }
 
     pub fn get_photoscene(&self, id: &str) -> Option<PhotosceneInfo> {
-        self.photoscenes.get(id).map(|r| r.value().clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT photoscene_id, name, scene_type, convert_format, status, progress, progress_msg, scene_link
+             FROM photoscenes WHERE photoscene_id = ?1",
+            rusqlite::params![id],
+            Self::row_to_photoscene,
+        )
+        .optional()
+        .expect("failed to get photoscene")
     }
 
     pub fn process_photoscene(&self, id: &str) -> bool {
-        if let Some(mut entry) = self.photoscenes.get_mut(id) {
-            // Jump straight to Done for mock purposes
-            entry.status = "Done".to_string();
-            entry.progress = "100".to_string();
-            entry.progress_msg = Some("Complete".to_string());
-            entry.scene_link = Some("https://example.com/download/model.obj".to_string());
-            true
-        } else {
-            false
-        }
+        let conn = self.db.conn();
+        let rows = conn
+            .execute(
+                "UPDATE photoscenes SET status = 'Done', progress = '100', progress_msg = 'Complete', scene_link = 'https://example.com/download/model.obj'
+                 WHERE photoscene_id = ?1",
+                rusqlite::params![id],
+            )
+            .expect("failed to process photoscene");
+        rows > 0
     }
 
     pub fn delete_photoscene(&self, id: &str) -> bool {
-        self.photoscenes.remove(id).is_some()
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM photoscenes WHERE photoscene_id = ?1",
+            rusqlite::params![id],
+        )
+        .expect("failed to delete photoscene")
+            > 0
+    }
+
+    fn row_to_photoscene(row: &rusqlite::Row<'_>) -> rusqlite::Result<PhotosceneInfo> {
+        Ok(PhotosceneInfo {
+            photoscene_id: row.get(0)?,
+            name: row.get(1)?,
+            scene_type: row.get(2)?,
+            convert_format: row.get(3)?,
+            status: row.get(4)?,
+            progress: row.get(5)?,
+            progress_msg: row.get(6)?,
+            scene_link: row.get(7)?,
+        })
     }
 }

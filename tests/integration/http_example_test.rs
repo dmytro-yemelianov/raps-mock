@@ -33,7 +33,7 @@ paths:
     let config = MockServerConfig {
         mode: MockMode::Stateless,
         openapi_dir: dir.path().to_path_buf(),
-        state_file: None,
+        db_path: None,
         verbose: false,
         host: "127.0.0.1".to_string(),
         port: 0,

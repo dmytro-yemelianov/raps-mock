@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = MockServerConfig {
         mode: MockMode::Stateful,
         openapi_dir: "../aps-sdk-openapi".into(),
-        state_file: None,
+        db_path: None,
         verbose: true,
         host: "0.0.0.0".to_string(),
         port: 3000,

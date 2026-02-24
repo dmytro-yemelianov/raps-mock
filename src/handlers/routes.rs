@@ -7,7 +7,7 @@
 //! any request-specific parameters, and returns an `impl IntoResponse`.
 
 use axum::response::{IntoResponse, Json as JsonResponse};
-use base64::Engine as _;  // needed for .decode() method on engine instances
+use base64::Engine as _; // needed for .decode() method on engine instances
 use serde_json::{Value, json};
 
 use crate::state::StateManager;
@@ -348,6 +348,9 @@ pub async fn handle_get_manifest(state: Option<StateManager>, urn: String) -> im
     let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
+        // Simulate progress on each poll (like real APS: repeated GET advances the job)
+        state_manager.translations.simulate_progress(&decoded_urn);
+
         if let Some(job) = state_manager.translations.get_job(&decoded_urn) {
             let status_str = match job.status {
                 crate::state::translations::TranslationStatus::Pending => "pending",
@@ -566,13 +569,23 @@ pub async fn handle_update_issue(
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
-        if let Some(issue) = state_manager
-            .issues
-            .update_issue(&project_id, &issue_id, title, description, status)
+        if let Some(issue) =
+            state_manager
+                .issues
+                .update_issue(&project_id, &issue_id, title, description, status)
         {
             (
                 axum::http::StatusCode::OK,
@@ -894,9 +907,18 @@ pub async fn handle_update_rfi(
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         if let Some(rfi) =
             state_manager
@@ -1089,9 +1111,18 @@ pub async fn handle_update_asset(
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         if let Some(asset) =
             state_manager
@@ -1284,9 +1315,18 @@ pub async fn handle_update_submittal(
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         if let Some(submittal) = state_manager.acc.update_submittal(
             &project_id,
@@ -1484,9 +1524,18 @@ pub async fn handle_update_checklist(
     body: Value,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let title = body.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let description = body.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let title = body
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = body
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let status = body
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         if let Some(checklist) = state_manager.acc.update_checklist(
             &project_id,
@@ -1831,7 +1880,10 @@ pub async fn handle_delete_object(
     object_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.objects.delete_object(&bucket_key, &object_key) {
+        if state_manager
+            .objects
+            .delete_object(&bucket_key, &object_key)
+        {
             (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -1878,10 +1930,7 @@ pub async fn handle_signed_s3_upload_complete(
     body: Value,
 ) -> impl IntoResponse {
     // Finalize the upload: return existing object (stored by the PUT) or create one
-    let _upload_key = body
-        .get("uploadKey")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let _upload_key = body.get("uploadKey").and_then(|v| v.as_str()).unwrap_or("");
 
     if let Some(ref state_manager) = state {
         // Return existing object if the mock-s3 PUT already stored it
@@ -1973,13 +2022,10 @@ pub async fn handle_da_list_engines(state: Option<StateManager>) -> impl IntoRes
         sm.da
             .list_engines()
             .into_iter()
-            .map(|e| serde_json::Value::String(e))
+            .map(serde_json::Value::String)
             .collect::<Vec<_>>()
     } else {
-        vec![
-            json!("Autodesk.Revit+2025"),
-            json!("Autodesk.AutoCAD+24"),
-        ]
+        vec![json!("Autodesk.Revit+2025"), json!("Autodesk.AutoCAD+24")]
     };
     (
         axum::http::StatusCode::OK,
@@ -1993,7 +2039,7 @@ pub async fn handle_da_list_appbundles(state: Option<StateManager>) -> impl Into
         sm.da
             .list_app_bundles()
             .into_iter()
-            .map(|b| serde_json::Value::String(b))
+            .map(serde_json::Value::String)
             .collect::<Vec<_>>()
     } else {
         vec![]
@@ -2035,8 +2081,14 @@ pub async fn handle_da_create_appbundle(
                 "description": info.description,
                 "version": info.version,
                 "uploadParameters": {
-                    "endpointUrl": "https://example.com/upload",
-                    "formData": {}
+                    "endpointUrl": format!("/mock-s3-upload/{}", info.id),
+                    "formData": {
+                        "key": format!("apps/mock-bucket/{}.zip", info.id),
+                        "policy": "bW9jay1wb2xpY3k=",
+                        "x-amz-signature": "mock-signature",
+                        "x-amz-credential": "mock-credential",
+                        "x-amz-date": "20260224T000000Z"
+                    }
                 }
             })),
         )
@@ -2048,7 +2100,16 @@ pub async fn handle_da_create_appbundle(
                 "id": "mock-bundle",
                 "engine": "Autodesk.Revit+2025",
                 "version": 1,
-                "uploadParameters": { "endpointUrl": "https://example.com/upload", "formData": {} }
+                "uploadParameters": {
+                    "endpointUrl": "/mock-s3-upload/mock-bundle",
+                    "formData": {
+                        "key": "apps/mock-bucket/mock-bundle.zip",
+                        "policy": "bW9jay1wb2xpY3k=",
+                        "x-amz-signature": "mock-signature",
+                        "x-amz-credential": "mock-credential",
+                        "x-amz-date": "20260224T000000Z"
+                    }
+                }
             })),
         )
             .into_response()
@@ -2070,10 +2131,7 @@ pub async fn handle_da_create_appbundle_alias(
     bundle_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let alias_id = body
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default");
+    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default");
     let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
     (
         axum::http::StatusCode::OK,
@@ -2091,7 +2149,7 @@ pub async fn handle_da_list_activities(state: Option<StateManager>) -> impl Into
         sm.da
             .list_activities()
             .into_iter()
-            .map(|a| serde_json::Value::String(a))
+            .map(serde_json::Value::String)
             .collect::<Vec<_>>()
     } else {
         vec![]
@@ -2161,10 +2219,7 @@ pub async fn handle_da_create_activity_alias(
     activity_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let alias_id = body
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default");
+    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default");
     let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
     (
         axum::http::StatusCode::OK,
@@ -2423,21 +2478,21 @@ pub async fn handle_reality_get_progress(
     state: Option<StateManager>,
     photoscene_id: String,
 ) -> impl IntoResponse {
-    if let Some(ref sm) = state {
-        if let Some(p) = sm.reality.get_photoscene(&photoscene_id) {
-            return (
-                axum::http::StatusCode::OK,
-                JsonResponse(json!({
-                    "Photoscene": {
-                        "photosceneid": p.photoscene_id,
-                        "progress": p.progress,
-                        "progressmsg": p.progress_msg,
-                        "status": p.status
-                    }
-                })),
-            )
-                .into_response();
-        }
+    if let Some(ref sm) = state
+        && let Some(p) = sm.reality.get_photoscene(&photoscene_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "Photoscene": {
+                    "photosceneid": p.photoscene_id,
+                    "progress": p.progress,
+                    "progressmsg": p.progress_msg,
+                    "status": p.status
+                }
+            })),
+        )
+            .into_response();
     }
     (
         axum::http::StatusCode::OK,
@@ -2457,22 +2512,22 @@ pub async fn handle_reality_get_result(
     state: Option<StateManager>,
     photoscene_id: String,
 ) -> impl IntoResponse {
-    if let Some(ref sm) = state {
-        if let Some(p) = sm.reality.get_photoscene(&photoscene_id) {
-            return (
-                axum::http::StatusCode::OK,
-                JsonResponse(json!({
-                    "Photoscene": {
-                        "photosceneid": p.photoscene_id,
-                        "progress": p.progress,
-                        "progressmsg": p.progress_msg,
-                        "scenelink": p.scene_link,
-                        "filesize": "5242880"
-                    }
-                })),
-            )
-                .into_response();
-        }
+    if let Some(ref sm) = state
+        && let Some(p) = sm.reality.get_photoscene(&photoscene_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "Photoscene": {
+                    "photosceneid": p.photoscene_id,
+                    "progress": p.progress,
+                    "progressmsg": p.progress_msg,
+                    "scenelink": p.scene_link,
+                    "filesize": "5242880"
+                }
+            })),
+        )
+            .into_response();
     }
     (
         axum::http::StatusCode::OK,
@@ -2518,11 +2573,7 @@ pub async fn handle_signed_s3_download_content(
             )
                 .into_response()
         } else {
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                "Object not found",
-            )
-                .into_response()
+            (axum::http::StatusCode::NOT_FOUND, "Object not found").into_response()
         }
     } else {
         (
@@ -2570,9 +2621,18 @@ pub async fn handle_admin_add_user(
     _account_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("new@example.com");
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New User");
-    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("project_user");
+    let email = body
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("new@example.com");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("New User");
+    let role = body
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("project_user");
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -2617,9 +2677,18 @@ pub async fn handle_admin_update_user(
     user_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated User");
-    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("project_user");
-    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Updated User");
+    let role = body
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("project_user");
+    let status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("active");
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2695,7 +2764,10 @@ pub async fn handle_admin_create_project(
     account_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New Project");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("New Project");
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -2731,8 +2803,14 @@ pub async fn handle_admin_update_project(
     project_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated Project");
-    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Updated Project");
+    let status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("active");
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3260,7 +3338,10 @@ pub async fn handle_create_project_template(
     _account_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("New Template");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("New Template");
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -3294,8 +3375,14 @@ pub async fn handle_update_project_template(
     template_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Updated Template");
-    let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("active");
+    let name = body
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Updated Template");
+    let status = body
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("active");
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3309,9 +3396,7 @@ pub async fn handle_update_project_template(
 
 // ---- Webhook Events ----
 
-pub async fn handle_list_webhook_events(
-    _state: Option<StateManager>,
-) -> impl IntoResponse {
+pub async fn handle_list_webhook_events(_state: Option<StateManager>) -> impl IntoResponse {
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3326,4 +3411,296 @@ pub async fn handle_list_webhook_events(
         })),
     )
         .into_response()
+}
+
+// ---- Model Derivative Metadata ----
+
+pub async fn handle_get_metadata(state: Option<StateManager>, urn: String) -> impl IntoResponse {
+    let decoded_urn = decode_base64_urn(&urn);
+
+    if let Some(ref state_manager) = state {
+        if let Some(metadata) = state_manager.translations.get_metadata(&decoded_urn) {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({ "data": metadata })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Translation not found for URN {}", decoded_urn)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": {
+                    "type": "metadata",
+                    "metadata": [{
+                        "guid": "mock-guid-001",
+                        "name": "3D View",
+                        "role": "3d"
+                    }]
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_object_tree(
+    state: Option<StateManager>,
+    urn: String,
+    guid: String,
+) -> impl IntoResponse {
+    let decoded_urn = decode_base64_urn(&urn);
+
+    if let Some(ref state_manager) = state {
+        if let Some(tree) = state_manager
+            .translations
+            .get_object_tree(&decoded_urn, &guid)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({ "data": tree })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": "Object tree not found"
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": {
+                    "type": "objects",
+                    "objects": [{ "objectid": 1, "name": "Model", "objects": [] }]
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_get_properties(
+    state: Option<StateManager>,
+    urn: String,
+    guid: String,
+) -> impl IntoResponse {
+    let decoded_urn = decode_base64_urn(&urn);
+
+    if let Some(ref state_manager) = state {
+        if let Some(props) = state_manager
+            .translations
+            .get_properties(&decoded_urn, &guid)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({ "data": props })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": "Properties not found"
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": {
+                    "type": "properties",
+                    "collection": []
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
+pub async fn handle_query_properties(
+    state: Option<StateManager>,
+    urn: String,
+    guid: String,
+    body: Value,
+) -> impl IntoResponse {
+    let decoded_urn = decode_base64_urn(&urn);
+
+    if let Some(ref state_manager) = state {
+        if let Some(props) = state_manager
+            .translations
+            .get_properties(&decoded_urn, &guid)
+        {
+            // Filter by object IDs if query contains $in operator
+            let filtered = if let Some(query) = body.get("query") {
+                if let Some(in_arr) = query.get("$in").and_then(|v| v.as_array()) {
+                    let object_ids: Vec<i64> = in_arr
+                        .iter()
+                        .skip(1) // first element is field name "objectid"
+                        .filter_map(|v| v.as_i64())
+                        .collect();
+
+                    if let Some(collection) = props.get("collection").and_then(|c| c.as_array()) {
+                        let filtered_items: Vec<&Value> = collection
+                            .iter()
+                            .filter(|item| {
+                                item.get("objectid")
+                                    .and_then(|id| id.as_i64())
+                                    .map(|id| object_ids.contains(&id))
+                                    .unwrap_or(false)
+                            })
+                            .collect();
+                        json!({
+                            "type": "properties",
+                            "collection": filtered_items
+                        })
+                    } else {
+                        props
+                    }
+                } else {
+                    props
+                }
+            } else {
+                props
+            };
+
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({ "data": filtered })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": "Properties not found"
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "data": {
+                    "type": "properties",
+                    "collection": []
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
+// ---- OSS Copy ----
+
+pub async fn handle_copy_object(
+    state: Option<StateManager>,
+    dest_bucket: String,
+    dest_key: String,
+    copy_from: String,
+) -> impl IntoResponse {
+    if let Some(ref state_manager) = state {
+        // Parse x-ads-copy-from: "bucket_key/objects/object_key"
+        let parts: Vec<&str> = copy_from.splitn(3, '/').collect();
+        let (src_bucket, src_key) = if parts.len() == 3 && parts[1] == "objects" {
+            (parts[0], parts[2])
+        } else {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                JsonResponse(json!({
+                    "code": "BAD_REQUEST",
+                    "message": format!("Invalid x-ads-copy-from header: {}", copy_from)
+                })),
+            )
+                .into_response();
+        };
+
+        if let Some(copied) =
+            state_manager
+                .objects
+                .copy_object(src_bucket, src_key, &dest_bucket, &dest_key)
+        {
+            (
+                axum::http::StatusCode::OK,
+                JsonResponse(json!({
+                    "bucketKey": copied.bucket_key,
+                    "objectKey": copied.object_key,
+                    "objectId": copied.object_id,
+                    "sha1": copied.sha1,
+                    "size": copied.size,
+                    "contentType": copied.content_type,
+                    "location": copied.location
+                })),
+            )
+                .into_response()
+        } else {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                JsonResponse(json!({
+                    "code": "NOT_FOUND",
+                    "message": format!("Source object not found: {}/objects/{}", src_bucket, src_key)
+                })),
+            )
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "bucketKey": dest_bucket,
+                "objectKey": dest_key,
+                "objectId": format!("urn:adsk.objects:os.object:{}/{}", dest_bucket, dest_key),
+                "sha1": "mock-sha1",
+                "size": 1024,
+                "contentType": "application/octet-stream",
+                "location": format!("/oss/v2/buckets/{}/objects/{}", dest_bucket, dest_key)
+            })),
+        )
+            .into_response()
+    }
+}
+
+// ---- DA App Bundle Upload ----
+
+pub async fn handle_mock_s3_upload(
+    _bundle_id: String,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    // Accept any multipart form data and return 200 OK
+    // In a real scenario, this validates form fields; for the mock, just accept it
+    if body.is_empty() {
+        (
+            axum::http::StatusCode::BAD_REQUEST,
+            JsonResponse(json!({
+                "code": "BAD_REQUEST",
+                "message": "Empty upload body"
+            })),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "status": "ok" })),
+        )
+            .into_response()
+    }
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
-use dashmap::DashMap;
+use crate::state::db::Db;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// OAuth token information
@@ -19,40 +20,32 @@ pub struct TokenInfo {
 
 /// OAuth authentication state
 pub struct AuthState {
-    /// Map of client_id -> token info
-    tokens_by_client: DashMap<String, TokenInfo>,
-    /// Index: access_token -> client_id for O(1) token validation
-    token_index: DashMap<String, String>,
+    db: Arc<Db>,
 }
 
 impl AuthState {
-    pub fn new() -> Self {
-        let state = Self {
-            tokens_by_client: DashMap::new(),
-            token_index: DashMap::new(),
-        };
+    pub fn new(db: Arc<Db>) -> Self {
+        let state = Self { db };
+        state.seed();
+        state
+    }
 
-        // Pre-seed well-known 3-legged mock token so Docker/test environments
-        // can use `raps auth login --token mock-3leg-token` and have all
-        // 3-legged-auth endpoints accept it without a real OAuth flow.
+    fn seed(&self) {
         let now = Self::current_timestamp();
-        let three_leg = TokenInfo {
-            access_token: "mock-3leg-token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_in: 86400 * 365,
-            expires_at: now + 86400 * 365,
-            refresh_token: None,
-            scope: Some("data:read data:write data:create data:search bucket:create bucket:read bucket:update bucket:delete account:read account:write user:read user:write user-profile:read viewables:read code:all openid".to_string()),
-            client_id: "mock-3leg-client".to_string(),
-        };
-        state
-            .token_index
-            .insert(three_leg.access_token.clone(), three_leg.client_id.clone());
-        state
-            .tokens_by_client
-            .insert(three_leg.client_id.clone(), three_leg);
-
-        state
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO tokens (client_id, access_token, token_type, expires_in, expires_at, refresh_token, scope)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                "mock-3leg-client",
+                "mock-3leg-token",
+                "Bearer",
+                86400_i64 * 365,
+                (now + 86400 * 365) as i64,
+                Option::<String>::None,
+                "data:read data:write data:create data:search bucket:create bucket:read bucket:update bucket:delete account:read account:write user:read user:write user-profile:read viewables:read code:all openid",
+            ],
+        ).expect("failed to seed auth token");
     }
 
     fn current_timestamp() -> u64 {
@@ -72,11 +65,6 @@ impl AuthState {
         let now = Self::current_timestamp();
         let expires_at = now + expires_in;
 
-        // Remove old token from index if exists
-        if let Some(old_token) = self.tokens_by_client.get(client_id) {
-            self.token_index.remove(&old_token.access_token);
-        }
-
         let token = TokenInfo {
             access_token: format!("mock_token_{}_{}", client_id, now),
             token_type: "Bearer".to_string(),
@@ -87,40 +75,79 @@ impl AuthState {
             client_id: client_id.to_string(),
         };
 
-        // Update both maps
-        self.token_index
-            .insert(token.access_token.clone(), client_id.to_string());
-        self.tokens_by_client
-            .insert(client_id.to_string(), token.clone());
+        let conn = self.db.conn();
+        // Upsert: replace old token for this client
+        conn.execute(
+            "INSERT INTO tokens (client_id, access_token, token_type, expires_in, expires_at, refresh_token, scope)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(client_id) DO UPDATE SET
+                access_token = excluded.access_token,
+                token_type = excluded.token_type,
+                expires_in = excluded.expires_in,
+                expires_at = excluded.expires_at,
+                refresh_token = excluded.refresh_token,
+                scope = excluded.scope",
+            rusqlite::params![
+                token.client_id,
+                token.access_token,
+                token.token_type,
+                token.expires_in as i64,
+                token.expires_at as i64,
+                token.refresh_token,
+                token.scope,
+            ],
+        ).expect("failed to insert token");
+
         token
     }
 
     /// Get token info for a client
     pub fn get_token(&self, client_id: &str) -> Option<TokenInfo> {
-        self.tokens_by_client.get(client_id).map(|t| t.clone())
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT client_id, access_token, token_type, expires_in, expires_at, refresh_token, scope
+             FROM tokens WHERE client_id = ?1",
+            rusqlite::params![client_id],
+            |row| {
+                Ok(TokenInfo {
+                    client_id: row.get(0)?,
+                    access_token: row.get(1)?,
+                    token_type: row.get(2)?,
+                    expires_in: row.get::<_, i64>(3)? as u64,
+                    expires_at: row.get::<_, i64>(4)? as u64,
+                    refresh_token: row.get(5)?,
+                    scope: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .expect("failed to query token")
     }
 
-    /// Validate an access token - O(1) lookup
+    /// Validate an access token - O(1) lookup via UNIQUE index
     pub fn validate_token(&self, token: &str) -> bool {
         let now = Self::current_timestamp();
-
-        self.token_index
-            .get(token)
-            .and_then(|client_id| self.tokens_by_client.get(client_id.value()))
-            .map(|token_info| token_info.expires_at > now)
-            .unwrap_or(false)
+        let conn = self.db.conn();
+        conn.query_row(
+            "SELECT expires_at FROM tokens WHERE access_token = ?1",
+            rusqlite::params![token],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .expect("failed to validate token")
+        .map(|expires_at| (expires_at as u64) > now)
+        .unwrap_or(false)
     }
 
     /// Revoke a token
     pub fn revoke_token(&self, token: &str) {
-        if let Some((_, client_id)) = self.token_index.remove(token) {
-            self.tokens_by_client.remove(&client_id);
-        }
+        let conn = self.db.conn();
+        conn.execute(
+            "DELETE FROM tokens WHERE access_token = ?1",
+            rusqlite::params![token],
+        )
+        .expect("failed to revoke token");
     }
 }
 
-impl Default for AuthState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use rusqlite::OptionalExtension;

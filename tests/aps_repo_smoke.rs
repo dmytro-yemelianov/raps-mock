@@ -16,7 +16,7 @@ async fn aps_repo_parses_and_builds_router() {
     let config = MockServerConfig {
         mode: MockMode::Stateless,
         openapi_dir: dir,
-        state_file: None,
+        db_path: None,
         verbose: false,
         host: "127.0.0.1".into(),
         port: 0,

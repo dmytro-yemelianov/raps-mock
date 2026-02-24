@@ -2,11 +2,11 @@
 // Copyright 2024-2025 Dmytro Yemelianov
 
 use axum::response::Response;
-use dashmap::DashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Custom handler function type
 pub type HandlerFn =
@@ -14,29 +14,29 @@ pub type HandlerFn =
 
 /// Registry for custom handlers
 pub struct CustomHandlerRegistry {
-    handlers: DashMap<String, HandlerFn>,
+    handlers: RwLock<HashMap<String, HandlerFn>>,
 }
 
 impl CustomHandlerRegistry {
     pub fn new() -> Self {
         Self {
-            handlers: DashMap::new(),
+            handlers: RwLock::new(HashMap::new()),
         }
     }
 
     /// Register a custom handler for a route
     pub fn register(&self, route_key: String, handler: HandlerFn) {
-        self.handlers.insert(route_key, handler);
+        self.handlers.write().unwrap().insert(route_key, handler);
     }
 
     /// Check if a handler exists for a route
     pub fn has(&self, route_key: &str) -> bool {
-        self.handlers.contains_key(route_key)
+        self.handlers.read().unwrap().contains_key(route_key)
     }
 
     /// Get a handler for a route
     pub fn get(&self, route_key: &str) -> Option<HandlerFn> {
-        self.handlers.get(route_key).map(|h| h.clone())
+        self.handlers.read().unwrap().get(route_key).cloned()
     }
 }
 

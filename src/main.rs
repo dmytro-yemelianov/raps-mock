@@ -27,9 +27,9 @@ struct Cli {
     #[arg(long, default_value = "../aps-sdk-openapi")]
     openapi_dir: PathBuf,
 
-    /// Path to state persistence file (optional)
+    /// Path to SQLite database file for persistent state (omit for in-memory)
     #[arg(long)]
-    state_file: Option<PathBuf>,
+    db: Option<PathBuf>,
 
     /// Enable verbose logging
     #[arg(short, long)]
@@ -55,11 +55,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting raps-mock server");
     info!("Mode: {:?}", cli.mode);
     info!("OpenAPI directory: {}", cli.openapi_dir.display());
+    if let Some(ref db) = cli.db {
+        info!("Database: {}", db.display());
+    }
 
     let config = MockServerConfig {
         mode: cli.mode,
         openapi_dir: cli.openapi_dir,
-        state_file: cli.state_file,
+        db_path: cli.db,
         verbose: cli.verbose,
         host: cli.host.clone(),
         port: cli.port,

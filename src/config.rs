@@ -36,8 +36,8 @@ pub struct MockServerConfig {
     pub mode: MockMode,
     /// Path to OpenAPI specifications directory
     pub openapi_dir: PathBuf,
-    /// Optional path to state persistence file
-    pub state_file: Option<PathBuf>,
+    /// Optional path to SQLite database file for persistent state
+    pub db_path: Option<PathBuf>,
     /// Enable verbose logging
     pub verbose: bool,
     /// Server host
@@ -51,7 +51,7 @@ impl Default for MockServerConfig {
         Self {
             mode: MockMode::default(),
             openapi_dir: PathBuf::from("../aps-sdk-openapi"),
-            state_file: None,
+            db_path: None,
             verbose: false,
             host: "0.0.0.0".to_string(),
             port: 3000,

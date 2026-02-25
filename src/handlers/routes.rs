@@ -28,6 +28,11 @@ fn decode_base64_urn(urn: &str) -> String {
 // ---- Auth ----
 
 pub async fn handle_auth_token(state: Option<StateManager>, body: Value) -> impl IntoResponse {
+    let grant_type = body
+        .get("grant_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("client_credentials");
+
     if let Some(ref state_manager) = state {
         let client_id = body
             .get("client_id")
@@ -40,25 +45,34 @@ pub async fn handle_auth_token(state: Option<StateManager>, body: Value) -> impl
             .map(|s| s.to_string());
 
         let token = state_manager.auth.generate_token(client_id, 3600, scope);
-        (
-            axum::http::StatusCode::OK,
-            JsonResponse(json!({
-                "access_token": token.access_token,
-                "token_type": token.token_type,
-                "expires_in": token.expires_in
-            })),
-        )
-            .into_response()
+
+        let mut response = json!({
+            "access_token": token.access_token,
+            "token_type": token.token_type,
+            "expires_in": token.expires_in
+        });
+
+        // Include refresh_token for 3-legged flows
+        if grant_type == "authorization_code" || grant_type == "refresh_token" {
+            if let Some(ref rt) = token.refresh_token {
+                response["refresh_token"] = json!(rt);
+            }
+        }
+
+        (axum::http::StatusCode::OK, JsonResponse(response)).into_response()
     } else {
-        (
-            axum::http::StatusCode::OK,
-            JsonResponse(json!({
-                "access_token": "mock-token",
-                "token_type": "Bearer",
-                "expires_in": 3600
-            })),
-        )
-            .into_response()
+        let mut response = json!({
+            "access_token": "mock-token",
+            "token_type": "Bearer",
+            "expires_in": 3600
+        });
+
+        // Include refresh_token for 3-legged flows
+        if grant_type == "authorization_code" || grant_type == "refresh_token" {
+            response["refresh_token"] = json!("mock-refresh-token-xxx");
+        }
+
+        (axum::http::StatusCode::OK, JsonResponse(response)).into_response()
     }
 }
 
@@ -88,20 +102,22 @@ pub async fn handle_list_buckets(state: Option<StateManager>) -> impl IntoRespon
             .map(|b| {
                 json!({
                     "bucketKey": b.bucket_key,
+                    "bucketOwner": b.bucket_owner,
                     "createdDate": b.created_date,
-                    "policyKey": b.policy_key
+                    "policyKey": b.policy_key,
+                    "permissions": b.permissions
                 })
             })
             .collect();
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "items": items })),
+            JsonResponse(json!({ "items": items, "next": null })),
         )
             .into_response()
     } else {
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "items": [] })),
+            JsonResponse(json!({ "items": [], "next": null })),
         )
             .into_response()
     }
@@ -161,13 +177,13 @@ pub async fn handle_list_objects(
             .collect();
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "items": items })),
+            JsonResponse(json!({ "items": items, "next": null })),
         )
             .into_response()
     } else {
         (
             axum::http::StatusCode::OK,
-            JsonResponse(json!({ "items": [] })),
+            JsonResponse(json!({ "items": [], "next": null })),
         )
             .into_response()
     }

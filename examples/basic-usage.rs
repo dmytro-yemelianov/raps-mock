@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         verbose: true,
         host: "0.0.0.0".to_string(),
         port: 3000,
+        ..MockServerConfig::default()
     };
 
     // Create and start the server

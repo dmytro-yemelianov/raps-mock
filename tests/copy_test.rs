@@ -12,6 +12,7 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
         verbose: false,
         host: "127.0.0.1".to_string(),
         port: 0,
+        ..MockServerConfig::default()
     };
 
     let server = MockServer::new(config).await.expect("server");

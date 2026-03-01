@@ -12,7 +12,8 @@ async fn test_server_creation() {
         db_path: None,
         verbose: false,
         host: "127.0.0.1".to_string(),
-        port: 0, // Let OS choose port
+        port: 0,
+        ..MockServerConfig::default()
     };
 
     let server = MockServer::new(config).await;
@@ -28,6 +29,7 @@ async fn test_stateless_mode() {
         verbose: false,
         host: "127.0.0.1".to_string(),
         port: 0,
+        ..MockServerConfig::default()
     };
 
     let server = MockServer::new(config).await;

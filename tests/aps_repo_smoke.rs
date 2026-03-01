@@ -20,6 +20,7 @@ async fn aps_repo_parses_and_builds_router() {
         verbose: false,
         host: "127.0.0.1".into(),
         port: 0,
+        ..MockServerConfig::default()
     };
 
     let server = MockServer::new(config).await;

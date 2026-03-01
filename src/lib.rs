@@ -8,6 +8,7 @@
 
 pub mod config;
 pub mod error;
+pub mod fixtures;
 pub mod handlers;
 pub mod middleware;
 pub mod openapi;

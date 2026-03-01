@@ -50,6 +50,10 @@ struct Cli {
     /// HTTP status code for simulated errors
     #[arg(long, default_value = "500")]
     error_status: u16,
+
+    /// Path to a fixture file (.json) or directory of fixture files to preload
+    #[arg(long)]
+    fixtures: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -89,6 +93,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             simulation.error_rate * 100.0, simulation.error_status);
     }
 
+    if let Some(ref fixtures) = cli.fixtures {
+        info!("Fixtures: {}", fixtures.display());
+    }
+
     let config = MockServerConfig {
         mode: cli.mode,
         openapi_dir: cli.openapi_dir,
@@ -97,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         host: cli.host.clone(),
         port: cli.port,
         simulation,
+        fixtures: cli.fixtures,
     };
 
     let server = MockServer::new(config).await?;

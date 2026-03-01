@@ -1,0 +1,22 @@
+{
+  "buckets": [
+    { "bucket_key": "project-models", "policy_key": "persistent" },
+    { "bucket_key": "staging-uploads", "policy_key": "transient" },
+    { "bucket_key": "client-deliverables", "policy_key": "persistent" }
+  ],
+  "objects": [
+    { "bucket_key": "project-models", "object_key": "building-v3.rvt", "size": 67000000, "content_type": "application/octet-stream" },
+    { "bucket_key": "project-models", "object_key": "structure.rvt", "size": 31000000 },
+    { "bucket_key": "project-models", "object_key": "mep-hvac.rvt", "size": 42000000 },
+    { "bucket_key": "staging-uploads", "object_key": "site-plan.dwg", "size": 8500000, "content_type": "application/acad" }
+  ],
+  "issues": [
+    { "project_id": "project-001", "title": "Concrete pour inspection needed for Level 3 slab", "status": "open", "description": "Scheduled for next week" },
+    { "project_id": "project-001", "title": "Fire door rating mismatch on Level 2", "status": "open", "assigned_to": "john@example.com" },
+    { "project_id": "project-001", "title": "MEP clash at grid B4-C5", "status": "closed", "description": "Resolved by raising duct 150mm" }
+  ],
+  "webhooks": [
+    { "system": "data", "event": "dm.version.added", "callback_url": "https://example.com/webhooks/version-added" },
+    { "system": "derivative", "event": "extraction.finished", "callback_url": "https://example.com/webhooks/translation-done" }
+  ]
+}

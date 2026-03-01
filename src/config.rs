@@ -47,6 +47,8 @@ pub struct MockServerConfig {
     pub port: u16,
     /// Simulation configuration for chaos testing
     pub simulation: SimulationConfig,
+    /// Path to fixture file or directory to preload on startup
+    pub fixtures: Option<PathBuf>,
 }
 
 impl Default for MockServerConfig {
@@ -59,6 +61,7 @@ impl Default for MockServerConfig {
             host: "0.0.0.0".to_string(),
             port: 3000,
             simulation: SimulationConfig::default(),
+            fixtures: None,
         }
     }
 }

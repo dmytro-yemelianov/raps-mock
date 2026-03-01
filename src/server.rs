@@ -46,6 +46,19 @@ impl MockServer {
             None
         };
 
+        // Load fixtures if configured (stateful mode only)
+        if let (Some(fixtures_path), Some(state_manager)) = (&config.fixtures, &state) {
+            let stats = if fixtures_path.is_dir() {
+                crate::fixtures::load_fixtures_dir(fixtures_path, state_manager)
+            } else {
+                crate::fixtures::load_fixtures(fixtures_path, state_manager)
+            };
+            match stats {
+                Ok(s) => tracing::info!("Loaded fixtures: {}", s),
+                Err(e) => tracing::error!("Failed to load fixtures: {}", e),
+            }
+        }
+
         // Build router using submodule
         let router =
             crate::server::router::build_router(all_routes, state.clone(), config.simulation.clone())?;

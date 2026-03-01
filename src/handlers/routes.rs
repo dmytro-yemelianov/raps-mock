@@ -795,10 +795,26 @@ pub async fn handle_delete_issue_comment(
 }
 
 pub async fn handle_list_issue_attachments(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _issue_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    issue_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let attachments = try_state!(sm.issues.list_attachments(&project_id, &issue_id));
+        let total = attachments.len() as i32;
+        let results: Vec<Value> = attachments
+            .into_iter()
+            .map(|a| json!({ "id": a.id, "name": a.name, "url": a.url, "createdAt": a.created_at }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2155,12 +2171,20 @@ pub async fn handle_da_delete_appbundle(
 }
 
 pub async fn handle_da_create_appbundle_alias(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     bundle_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default");
-    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
+    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+    if let Some(ref sm) = state {
+        let alias = try_state!(sm.da.create_alias("appbundle", &bundle_id, alias_id, version));
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": alias.id, "version": alias.version, "receiver": alias.receiver })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2243,12 +2267,20 @@ pub async fn handle_da_delete_activity(
 }
 
 pub async fn handle_da_create_activity_alias(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     activity_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default");
-    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
+    let alias_id = body.get("id").and_then(|v| v.as_str()).unwrap_or("default").to_string();
+    let version = body.get("version").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+    if let Some(ref sm) = state {
+        let alias = try_state!(sm.da.create_alias("activity", &activity_id, alias_id, version));
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": alias.id, "version": alias.version, "receiver": alias.receiver })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2612,9 +2644,33 @@ pub async fn handle_signed_s3_download_content(
 // ---- Admin Users ----
 
 pub async fn handle_admin_list_users(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let users = try_state!(sm.admin.list_users(&account_id));
+        let total = users.len() as i32;
+        let results: Vec<Value> = users
+            .into_iter()
+            .map(|u| {
+                json!({
+                    "id": u.id,
+                    "email": u.email,
+                    "name": u.name,
+                    "status": u.status,
+                    "role": u.role
+                })
+            })
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2641,22 +2697,39 @@ pub async fn handle_admin_list_users(
 }
 
 pub async fn handle_admin_add_user(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     body: Value,
 ) -> impl IntoResponse {
     let email = body
         .get("email")
         .and_then(|v| v.as_str())
-        .unwrap_or("new@example.com");
+        .unwrap_or("new@example.com")
+        .to_string();
     let name = body
         .get("name")
         .and_then(|v| v.as_str())
-        .unwrap_or("New User");
+        .unwrap_or("New User")
+        .to_string();
     let role = body
         .get("role")
         .and_then(|v| v.as_str())
-        .unwrap_or("project_user");
+        .unwrap_or("project_user")
+        .to_string();
+    if let Some(ref sm) = state {
+        let user = try_state!(sm.admin.add_user(&account_id, email, name, role));
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "status": user.status,
+                "role": user.role
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -2671,8 +2744,8 @@ pub async fn handle_admin_add_user(
 }
 
 pub async fn handle_admin_search_users(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     body: Value,
 ) -> impl IntoResponse {
     // The CLI deserializes this as a single AccountUser (not paginated)
@@ -2680,6 +2753,23 @@ pub async fn handle_admin_search_users(
         .get("email")
         .and_then(|v| v.as_str())
         .unwrap_or("alice@example.com");
+    if let Some(ref sm) = state
+        && let Ok(Some(user)) = sm.admin.search_user(&account_id, email)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "firstName": user.first_name,
+                "lastName": user.last_name,
+                "status": user.status,
+                "companyId": user.company_id
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2696,49 +2786,89 @@ pub async fn handle_admin_search_users(
 }
 
 pub async fn handle_admin_update_user(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     user_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Updated User");
-    let role = body
-        .get("role")
-        .and_then(|v| v.as_str())
-        .unwrap_or("project_user");
-    let status = body
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("active");
+    let name = body.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let role = body.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if let Some(ref sm) = state
+        && let Ok(Some(user)) = sm.admin.update_user(&account_id, &user_id, name.clone(), role.clone(), status.clone())
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "status": user.status,
+                "role": user.role
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "id": user_id,
             "email": "user@example.com",
-            "name": name,
-            "status": status,
-            "role": role
+            "name": name.unwrap_or_else(|| "Updated User".to_string()),
+            "status": status.unwrap_or_else(|| "active".to_string()),
+            "role": role.unwrap_or_else(|| "project_user".to_string())
         })),
     )
         .into_response()
 }
 
 pub async fn handle_admin_delete_user(
-    _state: Option<StateManager>,
-    _account_id: String,
-    _user_id: String,
+    state: Option<StateManager>,
+    account_id: String,
+    user_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        try_state!(sm.admin.delete_user(&account_id, &user_id));
+    }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
 
 pub async fn handle_admin_import_users(
-    _state: Option<StateManager>,
-    _account_id: String,
-    _body: Value,
+    state: Option<StateManager>,
+    account_id: String,
+    body: Value,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let users_arr = body.get("users").and_then(|v| v.as_array());
+        let mut imports = Vec::new();
+        if let Some(arr) = users_arr {
+            for u in arr {
+                let email = u.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("Imported User").to_string();
+                let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("project_user").to_string();
+                imports.push((email, name, role));
+            }
+        }
+        let (success, failures) = try_state!(sm.admin.import_users(&account_id, imports));
+        let success_items: Vec<Value> = success
+            .iter()
+            .map(|u| json!({ "email": u.email, "status": u.status }))
+            .collect();
+        let failure_items: Vec<Value> = failures
+            .iter()
+            .map(|e| json!({ "email": e }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "success": success_items.len(),
+                "failure": failure_items.len(),
+                "success_items": success_items,
+                "failure_items": failure_items
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2757,25 +2887,31 @@ pub async fn handle_admin_import_users(
 // ---- Admin Projects ----
 
 pub async fn handle_admin_list_projects(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let projects = try_state!(sm.admin.list_projects(&account_id));
+        let total = projects.len() as i32;
+        let results: Vec<Value> = projects
+            .into_iter()
+            .map(|p| json!({ "id": p.id, "name": p.name, "status": p.status, "accountId": p.account_id }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "results": [
-                {
-                    "id": "proj-001",
-                    "name": "Mock Project Alpha",
-                    "status": "active",
-                    "accountId": "mock-account-001"
-                },
-                {
-                    "id": "proj-002",
-                    "name": "Mock Project Beta",
-                    "status": "active",
-                    "accountId": "mock-account-001"
-                }
+                { "id": "proj-001", "name": "Mock Project Alpha", "status": "active", "accountId": "mock-account-001" },
+                { "id": "proj-002", "name": "Mock Project Beta", "status": "active", "accountId": "mock-account-001" }
             ],
             "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
         })),
@@ -2784,14 +2920,23 @@ pub async fn handle_admin_list_projects(
 }
 
 pub async fn handle_admin_create_project(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     account_id: String,
     body: Value,
 ) -> impl IntoResponse {
     let name = body
         .get("name")
         .and_then(|v| v.as_str())
-        .unwrap_or("New Project");
+        .unwrap_or("New Project")
+        .to_string();
+    if let Some(ref sm) = state {
+        let project = try_state!(sm.admin.create_project(&account_id, name));
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({ "id": project.id, "name": project.name, "status": project.status, "accountId": project.account_id })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -2805,10 +2950,19 @@ pub async fn handle_admin_create_project(
 }
 
 pub async fn handle_admin_get_project(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     account_id: String,
     project_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state
+        && let Ok(Some(p)) = sm.admin.get_project(&account_id, &project_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": p.id, "name": p.name, "status": p.status, "accountId": p.account_id })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2822,25 +2976,28 @@ pub async fn handle_admin_get_project(
 }
 
 pub async fn handle_admin_update_project(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     account_id: String,
     project_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Updated Project");
-    let status = body
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("active");
+    let name = body.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if let Some(ref sm) = state
+        && let Ok(Some(p)) = sm.admin.update_project(&account_id, &project_id, name.clone(), status.clone())
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": p.id, "name": p.name, "status": p.status, "accountId": p.account_id })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "id": project_id,
-            "name": name,
-            "status": status,
+            "name": name.unwrap_or_else(|| "Updated Project".to_string()),
+            "status": status.unwrap_or_else(|| "active".to_string()),
             "accountId": account_id
         })),
     )
@@ -2850,21 +3007,31 @@ pub async fn handle_admin_update_project(
 // ---- Admin Operations ----
 
 pub async fn handle_admin_list_project_users(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     _account_id: String,
-    _project_id: String,
+    project_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let users = try_state!(sm.admin.list_project_users(&project_id));
+        let total = users.len() as i32;
+        let results: Vec<Value> = users
+            .into_iter()
+            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "role": u.role_id }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "results": [
-                {
-                    "id": "user-001",
-                    "email": "alice@example.com",
-                    "name": "Alice Johnson",
-                    "status": "active",
-                    "role": "project_admin"
-                }
+                { "id": "user-001", "email": "alice@example.com", "name": "Alice Johnson", "status": "active", "role": "project_admin" }
             ],
             "pagination": { "limit": 50, "offset": 0, "totalResults": 1 }
         })),
@@ -2873,9 +3040,23 @@ pub async fn handle_admin_list_project_users(
 }
 
 pub async fn handle_admin_get_job(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     job_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state
+        && let Ok(Some(job)) = sm.admin.get_job(&job_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": job.id,
+                "status": job.status,
+                "progress": job.progress,
+                "result": job.result
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2891,10 +3072,26 @@ pub async fn handle_admin_get_job(
 // ---- Project-level User Endpoints (used by raps admin user add/remove/update) ----
 
 pub async fn handle_admin_get_project_user(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     user_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state
+        && let Ok(Some(pu)) = sm.admin.get_project_user(&project_id, &user_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": pu.id,
+                "email": pu.email,
+                "name": pu.name,
+                "status": pu.status,
+                "projectId": pu.project_id,
+                "roleId": pu.role_id
+            })),
+        )
+            .into_response();
+    }
     // Return 404 to indicate user doesn't exist yet (triggers add)
     (
         axum::http::StatusCode::NOT_FOUND,
@@ -2907,36 +3104,63 @@ pub async fn handle_admin_get_project_user(
 }
 
 pub async fn handle_admin_add_project_user(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     project_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let user_id = body
-        .get("userId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("mock-user-id");
-    let email = body
-        .get("email")
-        .and_then(|v| v.as_str())
-        .unwrap_or("user@example.com");
+    let user_id = body.get("userId").and_then(|v| v.as_str()).unwrap_or("mock-user-id").to_string();
+    let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("user@example.com").to_string();
+    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Mock User").to_string();
+    let role_id = body.get("roleId").and_then(|v| v.as_str()).unwrap_or("role-default").to_string();
+    if let Some(ref sm) = state {
+        let pu = try_state!(sm.admin.add_project_user(&project_id, user_id, email, name, role_id));
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "id": pu.id,
+                "email": pu.email,
+                "name": pu.name,
+                "status": pu.status,
+                "projectId": pu.project_id,
+                "roleId": pu.role_id
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
-            "id": user_id,
-            "email": email,
+            "id": "mock-user-id",
+            "email": "user@example.com",
             "name": "Mock User",
             "status": "active",
             "projectId": project_id,
-            "roleId": body.get("roleId").and_then(|v| v.as_str()).unwrap_or("role-default")
+            "roleId": "role-default"
         })),
     )
         .into_response()
 }
 
 pub async fn handle_admin_list_project_users_v2(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let users = try_state!(sm.admin.list_project_users(&project_id));
+        let total = users.len() as i32;
+        let results: Vec<Value> = users
+            .into_iter()
+            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "projectId": u.project_id, "roleId": u.role_id }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2948,15 +3172,27 @@ pub async fn handle_admin_list_project_users_v2(
 }
 
 pub async fn handle_admin_update_project_user(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     project_id: String,
     user_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let role_id = body
-        .get("roleId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("role-default");
+    let role_id = body.get("roleId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if let Some(ref sm) = state
+        && let Ok(Some(pu)) = sm.admin.update_project_user(&project_id, &user_id, role_id.clone())
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "id": pu.id,
+                "email": pu.email,
+                "status": pu.status,
+                "projectId": pu.project_id,
+                "roleId": pu.role_id
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -2964,26 +3200,37 @@ pub async fn handle_admin_update_project_user(
             "email": "user@example.com",
             "status": "active",
             "projectId": project_id,
-            "roleId": role_id
+            "roleId": role_id.unwrap_or_else(|| "role-default".to_string())
         })),
     )
         .into_response()
 }
 
 pub async fn handle_admin_delete_project_user(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _user_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    user_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        try_state!(sm.admin.delete_project_user(&project_id, &user_id));
+    }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
 
 // ---- HQ Companies ----
 
 pub async fn handle_hq_list_companies(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let companies = try_state!(sm.admin.list_companies(&account_id));
+        let results: Vec<Value> = companies
+            .into_iter()
+            .map(|c| json!({ "id": c.id, "name": c.name, "trade": c.trade }))
+            .collect();
+        return (axum::http::StatusCode::OK, JsonResponse(json!(results))).into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!([
@@ -3236,10 +3483,33 @@ pub async fn handle_dm_delete_folder(
 }
 
 pub async fn handle_dm_get_folder_permissions(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _folder_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    folder_id: String,
 ) -> impl IntoResponse {
+    let folder_id = strip_folder_urn(&folder_id).to_string();
+    if let Some(ref sm) = state {
+        let perms = try_state!(sm.folders.get_permissions(&project_id, &folder_id));
+        let data: Vec<Value> = perms
+            .into_iter()
+            .map(|p| {
+                json!({
+                    "type": "folder-permissions",
+                    "id": p.id,
+                    "attributes": {
+                        "subjectId": p.subject_id,
+                        "subjectType": p.subject_type,
+                        "actions": p.actions
+                    }
+                })
+            })
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "jsonapi": { "version": "1.0" }, "data": data })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3261,11 +3531,43 @@ pub async fn handle_dm_get_folder_permissions(
 }
 
 pub async fn handle_dm_batch_update_folder_permissions(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _folder_id: String,
-    _body: Value,
+    state: Option<StateManager>,
+    project_id: String,
+    folder_id: String,
+    body: Value,
 ) -> impl IntoResponse {
+    let folder_id = strip_folder_urn(&folder_id).to_string();
+    if let Some(ref sm) = state {
+        let mut results = Vec::new();
+        if let Some(arr) = body.get("data").and_then(|v| v.as_array()) {
+            for entry in arr {
+                let attrs = entry.get("attributes").unwrap_or(&Value::Null);
+                let subject_id = attrs.get("subjectId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let subject_type = attrs.get("subjectType").and_then(|v| v.as_str()).unwrap_or("user").to_string();
+                let actions: Vec<String> = attrs
+                    .get("actions")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                    .unwrap_or_default();
+                if let Ok(perm) = sm.folders.set_permission(&project_id, &folder_id, subject_id, subject_type, actions) {
+                    results.push(json!({
+                        "type": "folder-permissions",
+                        "id": perm.id,
+                        "attributes": {
+                            "subjectId": perm.subject_id,
+                            "subjectType": perm.subject_type,
+                            "actions": perm.actions
+                        }
+                    }));
+                }
+            }
+        }
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "jsonapi": { "version": "1.0" }, "data": results })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3560,9 +3862,25 @@ pub async fn handle_dm_get_project(
 // ---- Project Templates ----
 
 pub async fn handle_list_project_templates(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state {
+        let templates = try_state!(sm.admin.list_templates(&account_id));
+        let total = templates.len() as i32;
+        let results: Vec<Value> = templates
+            .into_iter()
+            .map(|t| json!({ "id": t.id, "name": t.name, "status": t.status }))
+            .collect();
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "results": results,
+                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+            })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3577,14 +3895,23 @@ pub async fn handle_list_project_templates(
 }
 
 pub async fn handle_create_project_template(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     body: Value,
 ) -> impl IntoResponse {
     let name = body
         .get("name")
         .and_then(|v| v.as_str())
-        .unwrap_or("New Template");
+        .unwrap_or("New Template")
+        .to_string();
+    if let Some(ref sm) = state {
+        let t = try_state!(sm.admin.create_template(&account_id, name));
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({ "id": t.id, "name": t.name, "status": t.status })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
@@ -3597,10 +3924,19 @@ pub async fn handle_create_project_template(
 }
 
 pub async fn handle_get_project_template(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     template_id: String,
 ) -> impl IntoResponse {
+    if let Some(ref sm) = state
+        && let Ok(Some(t)) = sm.admin.get_template(&account_id, &template_id)
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": t.id, "name": t.name, "status": t.status })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
@@ -3613,25 +3949,28 @@ pub async fn handle_get_project_template(
 }
 
 pub async fn handle_update_project_template(
-    _state: Option<StateManager>,
-    _account_id: String,
+    state: Option<StateManager>,
+    account_id: String,
     template_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Updated Template");
-    let status = body
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("active");
+    let name = body.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+    if let Some(ref sm) = state
+        && let Ok(Some(t)) = sm.admin.update_template(&account_id, &template_id, name.clone(), status.clone())
+    {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({ "id": t.id, "name": t.name, "status": t.status })),
+        )
+            .into_response();
+    }
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "id": template_id,
-            "name": name,
-            "status": status
+            "name": name.unwrap_or_else(|| "Updated Template".to_string()),
+            "status": status.unwrap_or_else(|| "active".to_string())
         })),
     )
         .into_response()

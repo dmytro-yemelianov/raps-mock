@@ -29,7 +29,7 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
 
 async fn get_token(client: &reqwest::Client, base: &str) -> String {
     let resp = client
-        .post(&format!("{}/authentication/v2/token", base))
+        .post(format!("{}/authentication/v2/token", base))
         .json(&serde_json::json!({
             "client_id": "test-client",
             "client_secret": "test-secret",
@@ -55,7 +55,7 @@ async fn test_copy_object() {
 
     // 1. Create source bucket
     let resp = client
-        .post(&format!("{}/oss/v2/buckets", base))
+        .post(format!("{}/oss/v2/buckets", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "bucketKey": src_bucket,
@@ -72,7 +72,7 @@ async fn test_copy_object() {
 
     // 2. Create destination bucket
     let resp = client
-        .post(&format!("{}/oss/v2/buckets", base))
+        .post(format!("{}/oss/v2/buckets", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "bucketKey": dest_bucket,
@@ -89,7 +89,7 @@ async fn test_copy_object() {
 
     // 3. Upload source object via signed S3 flow
     let resp = client
-        .get(&format!(
+        .get(format!(
             "{}/oss/v2/buckets/{}/objects/{}/signeds3upload",
             base, src_bucket, src_key
         ))
@@ -113,7 +113,7 @@ async fn test_copy_object() {
     // Complete the upload
     let upload_key = signed["uploadKey"].as_str().unwrap();
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/oss/v2/buckets/{}/objects/{}/signeds3upload",
             base, src_bucket, src_key
         ))
@@ -127,7 +127,7 @@ async fn test_copy_object() {
     // 4. Copy object via PUT with x-ads-copy-from header
     let copy_from = format!("{}/objects/{}", src_bucket, src_key);
     let resp = client
-        .put(&format!(
+        .put(format!(
             "{}/oss/v2/buckets/{}/objects/{}",
             base, dest_bucket, dest_key
         ))
@@ -143,7 +143,7 @@ async fn test_copy_object() {
 
     // 5. Verify destination object exists by checking list objects
     let resp = client
-        .get(&format!("{}/oss/v2/buckets/{}/objects", base, dest_bucket))
+        .get(format!("{}/oss/v2/buckets/{}/objects", base, dest_bucket))
         .bearer_auth(&token)
         .send()
         .await
@@ -167,7 +167,7 @@ async fn test_copy_nonexistent_source() {
 
     // Create destination bucket
     let resp = client
-        .post(&format!("{}/oss/v2/buckets", base))
+        .post(format!("{}/oss/v2/buckets", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "bucketKey": "dest-bucket",
@@ -180,7 +180,7 @@ async fn test_copy_nonexistent_source() {
 
     // Try to copy from non-existent source
     let resp = client
-        .put(&format!(
+        .put(format!(
             "{}/oss/v2/buckets/dest-bucket/objects/target.rvt",
             base
         ))

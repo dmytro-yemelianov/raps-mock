@@ -32,6 +32,13 @@ pub struct WorkItemInfo {
     pub activity_id: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AliasInfo {
+    pub id: String,
+    pub version: u32,
+    pub receiver: String,
+}
+
 pub struct DaState {
     db: Arc<Db>,
 }
@@ -178,5 +185,42 @@ impl DaState {
             },
         )
         .optional()?)
+    }
+
+    // ---- Aliases ----
+
+    pub fn create_alias(
+        &self,
+        owner_type: &str,
+        owner_id: &str,
+        alias_id: String,
+        version: u32,
+    ) -> crate::error::Result<AliasInfo> {
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT OR REPLACE INTO da_aliases (alias_id, owner_type, owner_id, version)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![alias_id, owner_type, owner_id, version],
+        )?;
+        Ok(AliasInfo {
+            id: alias_id,
+            version,
+            receiver: owner_id.to_string(),
+        })
+    }
+
+    pub fn list_aliases(&self, owner_type: &str, owner_id: &str) -> crate::error::Result<Vec<AliasInfo>> {
+        let conn = self.db.conn();
+        let mut stmt = conn.prepare(
+            "SELECT alias_id, version, owner_id FROM da_aliases WHERE owner_type = ?1 AND owner_id = ?2",
+        )?;
+        let items = stmt.query_map(rusqlite::params![owner_type, owner_id], |row| {
+            Ok(AliasInfo {
+                id: row.get(0)?,
+                version: row.get(1)?,
+                receiver: row.get(2)?,
+            })
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 }

@@ -19,6 +19,18 @@ pub struct FolderInfo {
     pub last_modified_time: String,
 }
 
+/// Folder permission entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderPermission {
+    pub id: String,
+    pub folder_id: String,
+    pub project_id: String,
+    pub subject_id: String,
+    pub subject_type: String,
+    pub actions: Vec<String>,
+}
+
 /// Folder state backed by SQLite
 pub struct FolderState {
     db: Arc<Db>,
@@ -47,6 +59,21 @@ impl FolderState {
             )
             .expect("failed to seed folder");
         }
+
+        // Seed default folder permission
+        conn.execute(
+            "INSERT OR IGNORE INTO folder_permissions (id, folder_id, project_id, subject_id, subject_type, actions)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "perm-001",
+                "mock-top-folder-001",
+                "b.default-project",
+                "user-001",
+                "user",
+                r#"["view","download","collaborate"]"#,
+            ],
+        )
+        .expect("failed to seed folder permission");
 
         // A subfolder inside "Project Files"
         conn.execute(
@@ -184,6 +211,60 @@ impl FolderState {
             rusqlite::params![folder_id, project_id],
         )?;
         Ok(rows > 0)
+    }
+
+    // ---- Permissions ----
+
+    pub fn get_permissions(
+        &self,
+        project_id: &str,
+        folder_id: &str,
+    ) -> crate::error::Result<Vec<FolderPermission>> {
+        let conn = self.db.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, folder_id, project_id, subject_id, subject_type, actions
+             FROM folder_permissions WHERE project_id = ?1 AND folder_id = ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![project_id, folder_id], |row| {
+            let actions_str: String = row.get(5)?;
+            let actions: Vec<String> =
+                serde_json::from_str(&actions_str).unwrap_or_default();
+            Ok(FolderPermission {
+                id: row.get(0)?,
+                folder_id: row.get(1)?,
+                project_id: row.get(2)?,
+                subject_id: row.get(3)?,
+                subject_type: row.get(4)?,
+                actions,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn set_permission(
+        &self,
+        project_id: &str,
+        folder_id: &str,
+        subject_id: String,
+        subject_type: String,
+        actions: Vec<String>,
+    ) -> crate::error::Result<FolderPermission> {
+        let id = format!("perm-{}", uuid::Uuid::new_v4());
+        let actions_json = serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string());
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT OR REPLACE INTO folder_permissions (id, folder_id, project_id, subject_id, subject_type, actions)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![id, folder_id, project_id, subject_id, subject_type, actions_json],
+        )?;
+        Ok(FolderPermission {
+            id,
+            folder_id: folder_id.to_string(),
+            project_id: project_id.to_string(),
+            subject_id,
+            subject_type,
+            actions,
+        })
     }
 
     fn row_to_folder(row: &rusqlite::Row<'_>) -> rusqlite::Result<FolderInfo> {

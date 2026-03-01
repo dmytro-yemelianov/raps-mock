@@ -2,6 +2,7 @@
 // Copyright 2024-2025 Dmytro Yemelianov
 
 pub mod acc;
+pub mod admin;
 pub mod auth;
 pub mod buckets;
 pub mod da;

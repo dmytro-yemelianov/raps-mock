@@ -28,6 +28,18 @@ pub struct CommentInfo {
     pub created_at: String,
 }
 
+/// ACC Issue attachment information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentInfo {
+    pub id: String,
+    pub issue_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub url: String,
+    pub created_at: String,
+}
+
 /// ACC Issues state
 pub struct IssuesState {
     db: Arc<Db>,
@@ -255,6 +267,57 @@ impl IssuesState {
             rusqlite::params![comment_id, issue_id],
         )?;
         Ok(rows > 0)
+    }
+
+    // ---- Attachments ----
+
+    pub fn list_attachments(
+        &self,
+        project_id: &str,
+        issue_id: &str,
+    ) -> crate::error::Result<Vec<AttachmentInfo>> {
+        let conn = self.db.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, issue_id, project_id, name, url, created_at
+             FROM issue_attachments WHERE project_id = ?1 AND issue_id = ?2",
+        )?;
+        let items = stmt.query_map(rusqlite::params![project_id, issue_id], |row| {
+            Ok(AttachmentInfo {
+                id: row.get(0)?,
+                issue_id: row.get(1)?,
+                project_id: row.get(2)?,
+                name: row.get(3)?,
+                url: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn add_attachment(
+        &self,
+        project_id: &str,
+        issue_id: &str,
+        name: String,
+        url: String,
+    ) -> crate::error::Result<AttachmentInfo> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let att = AttachmentInfo {
+            id: id.clone(),
+            issue_id: issue_id.to_string(),
+            project_id: project_id.to_string(),
+            name,
+            url,
+            created_at: now,
+        };
+        let conn = self.db.conn();
+        conn.execute(
+            "INSERT INTO issue_attachments (id, issue_id, project_id, name, url, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![att.id, att.issue_id, att.project_id, att.name, att.url, att.created_at],
+        )?;
+        Ok(att)
     }
 
     fn row_to_issue(row: &rusqlite::Row<'_>) -> rusqlite::Result<IssueInfo> {

@@ -131,6 +131,16 @@ CREATE TABLE IF NOT EXISTS issue_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_id ON issue_comments(issue_id);
 
+CREATE TABLE IF NOT EXISTS issue_attachments (
+    id TEXT PRIMARY KEY,
+    issue_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_issue_attachments_issue ON issue_attachments(project_id, issue_id);
+
 -- Webhooks
 CREATE TABLE IF NOT EXISTS webhooks (
     hook_id TEXT PRIMARY KEY,
@@ -164,6 +174,14 @@ CREATE TABLE IF NOT EXISTS work_items (
     status TEXT NOT NULL,
     progress TEXT,
     activity_id TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS da_aliases (
+    alias_id TEXT NOT NULL,
+    owner_type TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    PRIMARY KEY (alias_id, owner_type, owner_id)
 );
 
 -- Reality Capture
@@ -235,6 +253,17 @@ CREATE TABLE IF NOT EXISTS folders (
 CREATE INDEX IF NOT EXISTS idx_folders_project_id ON folders(project_id);
 CREATE INDEX IF NOT EXISTS idx_folders_parent_id ON folders(parent_folder_id);
 
+-- Folder Permissions
+CREATE TABLE IF NOT EXISTS folder_permissions (
+    id TEXT PRIMARY KEY,
+    folder_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    subject_type TEXT NOT NULL DEFAULT 'user',
+    actions TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_folder_permissions_folder ON folder_permissions(project_id, folder_id);
+
 -- Data Management: Items
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -257,4 +286,66 @@ CREATE TABLE IF NOT EXISTS item_versions (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_item_versions_item_id ON item_versions(item_id);
+
+-- Admin Users (account-level)
+CREATE TABLE IF NOT EXISTS admin_users (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    role TEXT NOT NULL DEFAULT 'project_user',
+    company_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_users_account ON admin_users(account_id);
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(account_id, email);
+
+-- Admin Projects (account-level)
+CREATE TABLE IF NOT EXISTS admin_projects (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+);
+CREATE INDEX IF NOT EXISTS idx_admin_projects_account ON admin_projects(account_id);
+
+-- Project Users (project-level assignments)
+CREATE TABLE IF NOT EXISTS project_users (
+    id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    role_id TEXT NOT NULL DEFAULT 'role-default',
+    PRIMARY KEY (id, project_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_users_project ON project_users(project_id);
+
+-- Admin Jobs
+CREATE TABLE IF NOT EXISTS admin_jobs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    progress TEXT NOT NULL DEFAULT '100%',
+    result TEXT NOT NULL DEFAULT 'success'
+);
+
+-- Project Templates
+CREATE TABLE IF NOT EXISTS project_templates (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+);
+CREATE INDEX IF NOT EXISTS idx_project_templates_account ON project_templates(account_id);
+
+-- HQ Companies
+CREATE TABLE IF NOT EXISTS companies (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    trade TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_companies_account ON companies(account_id);
 ";

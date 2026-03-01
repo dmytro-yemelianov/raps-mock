@@ -29,7 +29,7 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
 
 async fn get_token(client: &reqwest::Client, base: &str) -> String {
     let resp = client
-        .post(&format!("{}/authentication/v2/token", base))
+        .post(format!("{}/authentication/v2/token", base))
         .json(&serde_json::json!({
             "client_id": "test-client",
             "client_secret": "test-secret",
@@ -50,7 +50,7 @@ async fn test_appbundle_upload_flow() {
 
     // 1. Create an appbundle (requires auth)
     let resp = client
-        .post(&format!("{}/da/us-east/v3/appbundles", base))
+        .post(format!("{}/da/us-east/v3/appbundles", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "id": "TestBundle",
@@ -116,7 +116,7 @@ async fn test_upload_empty_body_rejected() {
     // POST empty body to mock-s3-upload should fail (no auth needed)
     let client = reqwest::Client::new();
     let resp = client
-        .post(&format!("{}/mock-s3-upload/some-bundle", base))
+        .post(format!("{}/mock-s3-upload/some-bundle", base))
         .send()
         .await
         .unwrap();

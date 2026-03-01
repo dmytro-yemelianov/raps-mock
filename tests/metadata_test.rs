@@ -31,7 +31,7 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
 /// Get a valid Bearer token from the mock auth endpoint
 async fn get_token(client: &reqwest::Client, base: &str) -> String {
     let resp = client
-        .post(&format!("{}/authentication/v2/token", base))
+        .post(format!("{}/authentication/v2/token", base))
         .json(&serde_json::json!({
             "client_id": "test-client",
             "client_secret": "test-secret",
@@ -53,7 +53,7 @@ async fn test_metadata_endpoints() {
     // 1. Create a translation job
     let urn = "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6dGVzdC9tb2RlbC5ydnQ"; // base64 URN
     let resp = client
-        .post(&format!("{}/modelderivative/v2/designdata/job", base))
+        .post(format!("{}/modelderivative/v2/designdata/job", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "input": { "urn": urn },
@@ -71,7 +71,7 @@ async fn test_metadata_endpoints() {
     // 2. Simulate progress to Success (calls: pending→inprogress→50%→75%→100%→success)
     for _ in 0..5 {
         let resp = client
-            .get(&format!(
+            .get(format!(
                 "{}/modelderivative/v2/designdata/{}/manifest",
                 base, urn
             ))
@@ -84,7 +84,7 @@ async fn test_metadata_endpoints() {
 
     // 3. GET metadata
     let resp = client
-        .get(&format!(
+        .get(format!(
             "{}/modelderivative/v2/designdata/{}/metadata",
             base, urn
         ))
@@ -104,7 +104,7 @@ async fn test_metadata_endpoints() {
 
     // 4. GET object tree
     let resp = client
-        .get(&format!(
+        .get(format!(
             "{}/modelderivative/v2/designdata/{}/metadata/{}",
             base, urn, guid
         ))
@@ -121,7 +121,7 @@ async fn test_metadata_endpoints() {
 
     // 5. GET properties
     let resp = client
-        .get(&format!(
+        .get(format!(
             "{}/modelderivative/v2/designdata/{}/metadata/{}/properties",
             base, urn, guid
         ))
@@ -138,7 +138,7 @@ async fn test_metadata_endpoints() {
 
     // 6. POST query properties (filter by object IDs)
     let resp = client
-        .post(&format!(
+        .post(format!(
             "{}/modelderivative/v2/designdata/{}/metadata/{}/properties:query",
             base, urn, guid
         ))
@@ -168,7 +168,7 @@ async fn test_metadata_not_found_before_success() {
     // Create a translation but don't advance to success
     let urn = "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6dGVzdC9ub3RyZWFkeQ";
     let resp = client
-        .post(&format!("{}/modelderivative/v2/designdata/job", base))
+        .post(format!("{}/modelderivative/v2/designdata/job", base))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "input": { "urn": urn },
@@ -181,7 +181,7 @@ async fn test_metadata_not_found_before_success() {
 
     // Metadata should return 404 since translation is not yet complete
     let resp = client
-        .get(&format!(
+        .get(format!(
             "{}/modelderivative/v2/designdata/{}/metadata",
             base, urn
         ))

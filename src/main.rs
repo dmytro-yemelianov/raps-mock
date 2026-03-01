@@ -2,7 +2,7 @@
 // Copyright 2024-2025 Dmytro Yemelianov
 
 use clap::Parser;
-use raps_mock::{MockMode, MockServer, MockServerConfig};
+use raps_mock::{MockMode, MockServer, MockServerConfig, SimulationConfig};
 use std::path::PathBuf;
 use tracing::{Level, info};
 
@@ -34,6 +34,22 @@ struct Cli {
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
+
+    /// Add simulated latency to every request (milliseconds)
+    #[arg(long, default_value = "0")]
+    latency: u64,
+
+    /// Add random jitter on top of latency (0 to N milliseconds)
+    #[arg(long, default_value = "0")]
+    jitter: u64,
+
+    /// Probability of returning a simulated error (0.0 to 1.0)
+    #[arg(long, default_value = "0.0")]
+    error_rate: f64,
+
+    /// HTTP status code for simulated errors
+    #[arg(long, default_value = "500")]
+    error_status: u16,
 }
 
 #[tokio::main]
@@ -59,6 +75,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Database: {}", db.display());
     }
 
+    let simulation = SimulationConfig {
+        latency_ms: cli.latency,
+        jitter_ms: cli.jitter,
+        error_rate: cli.error_rate,
+        error_status: cli.error_status,
+        overrides: Vec::new(),
+    };
+
+    if simulation.is_active() {
+        info!("Simulation enabled: latency={}ms jitter={}ms error_rate={:.0}% error_status={}",
+            simulation.latency_ms, simulation.jitter_ms,
+            simulation.error_rate * 100.0, simulation.error_status);
+    }
+
     let config = MockServerConfig {
         mode: cli.mode,
         openapi_dir: cli.openapi_dir,
@@ -66,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         verbose: cli.verbose,
         host: cli.host.clone(),
         port: cli.port,
+        simulation,
     };
 
     let server = MockServer::new(config).await?;

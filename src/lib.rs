@@ -17,5 +17,6 @@ pub mod testing;
 
 pub use config::{MockMode, MockServerConfig};
 pub use error::{MockError, Result};
+pub use middleware::{SimulationConfig, simulation::PathOverride};
 pub use server::MockServer;
 pub use testing::TestServer;

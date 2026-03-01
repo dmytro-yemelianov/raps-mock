@@ -72,12 +72,8 @@ impl TestServer {
     /// Start a test server with a custom OpenAPI directory.
     pub async fn start_with_openapi_dir(openapi_dir: PathBuf) -> Result<Self> {
         let config = MockServerConfig {
-            mode: MockMode::Stateful,
             openapi_dir,
-            db_path: None,
-            verbose: false,
-            host: "127.0.0.1".to_string(),
-            port: 0,
+            ..MockServerConfig::default()
         };
         Self::start(config).await
     }

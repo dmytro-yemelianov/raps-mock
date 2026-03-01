@@ -10,13 +10,14 @@ use serde_json::Value;
 
 use crate::error::Result;
 use crate::handlers::routes;
-use crate::middleware::{auth_middleware, cors_middleware};
+use crate::middleware::{SimulationConfig, auth_middleware, cors_middleware, simulation_middleware};
 use crate::openapi::types::{HttpMethod, RouteDefinition};
 use crate::state::StateManager;
 
 pub fn build_router(
     routes_defs: Vec<RouteDefinition>,
     state: Option<StateManager>,
+    simulation: SimulationConfig,
 ) -> Result<Router> {
     let mut router = Router::new();
     let mut registered_routes = std::collections::HashSet::new();
@@ -57,10 +58,24 @@ pub fn build_router(
         };
     }
 
-    // Apply middleware
+    // Apply middleware (outermost layer runs first)
     router = router
         .layer(cors_middleware())
+        .layer(axum::middleware::from_fn(simulation_middleware))
         .layer(axum::middleware::from_fn(auth_middleware));
+
+    // Add simulation config as extension (if active)
+    if simulation.is_active() {
+        tracing::info!(
+            latency_ms = simulation.latency_ms,
+            jitter_ms = simulation.jitter_ms,
+            error_rate = simulation.error_rate,
+            error_status = simulation.error_status,
+            overrides = simulation.overrides.len(),
+            "Simulation mode active"
+        );
+        router = router.layer(axum::Extension(std::sync::Arc::new(simulation)));
+    }
 
     // Add state as extension for middleware access (if stateful mode)
     if let Some(state_manager) = state {

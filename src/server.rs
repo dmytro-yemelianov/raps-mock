@@ -47,7 +47,8 @@ impl MockServer {
         };
 
         // Build router using submodule
-        let router = crate::server::router::build_router(all_routes, state.clone())?;
+        let router =
+            crate::server::router::build_router(all_routes, state.clone(), config.simulation.clone())?;
 
         Ok(Self {
             config,

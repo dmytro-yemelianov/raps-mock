@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024-2025 Dmytro Yemelianov
 
+use crate::middleware::SimulationConfig;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -44,6 +45,8 @@ pub struct MockServerConfig {
     pub host: String,
     /// Server port
     pub port: u16,
+    /// Simulation configuration for chaos testing
+    pub simulation: SimulationConfig,
 }
 
 impl Default for MockServerConfig {
@@ -55,6 +58,7 @@ impl Default for MockServerConfig {
             verbose: false,
             host: "0.0.0.0".to_string(),
             port: 3000,
+            simulation: SimulationConfig::default(),
         }
     }
 }

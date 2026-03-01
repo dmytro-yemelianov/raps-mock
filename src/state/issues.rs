@@ -72,7 +72,7 @@ impl IssuesState {
         project_id: String,
         title: String,
         description: Option<String>,
-    ) -> IssueInfo {
+    ) -> crate::error::Result<IssueInfo> {
         let issue_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let issue = IssueInfo {
@@ -95,60 +95,51 @@ impl IssuesState {
                 issue.status,
                 issue.created_at,
             ],
-        )
-        .expect("failed to create issue");
-        issue
+        )?;
+        Ok(issue)
     }
 
     /// Get an issue
-    pub fn get_issue(&self, project_id: &str, issue_id: &str) -> Option<IssueInfo> {
+    pub fn get_issue(&self, project_id: &str, issue_id: &str) -> crate::error::Result<Option<IssueInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, project_id, title, description, status, created_at
              FROM issues WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![issue_id, project_id],
             Self::row_to_issue,
         )
-        .optional()
-        .expect("failed to get issue")
+        .optional()?)
     }
 
     /// List issues for a project
-    pub fn list_issues(&self, project_id: &str) -> Vec<IssueInfo> {
+    pub fn list_issues(&self, project_id: &str) -> crate::error::Result<Vec<IssueInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM issues WHERE project_id = ?1",
-            )
-            .expect("failed to prepare list issues");
-        stmt.query_map(rusqlite::params![project_id], Self::row_to_issue)
-            .expect("failed to list issues")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![project_id], Self::row_to_issue)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// List all issues across all projects
-    pub fn list_all(&self) -> Vec<IssueInfo> {
+    pub fn list_all(&self) -> crate::error::Result<Vec<IssueInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id, project_id, title, description, status, created_at FROM issues")
-            .expect("failed to prepare list all issues");
-        stmt.query_map([], Self::row_to_issue)
-            .expect("failed to list all issues")
-            .filter_map(|r| r.ok())
-            .collect()
+            .prepare("SELECT id, project_id, title, description, status, created_at FROM issues")?;
+        let items = stmt.query_map([], Self::row_to_issue)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Update issue status
-    pub fn update_issue_status(&self, project_id: &str, issue_id: &str, status: String) -> bool {
+    pub fn update_issue_status(&self, project_id: &str, issue_id: &str, status: String) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "UPDATE issues SET status = ?1 WHERE id = ?2 AND project_id = ?3",
             rusqlite::params![status, issue_id, project_id],
-        )
-        .expect("failed to update issue status")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     /// Update an issue with optional fields
@@ -159,18 +150,21 @@ impl IssuesState {
         title: Option<String>,
         description: Option<String>,
         status: Option<String>,
-    ) -> Option<IssueInfo> {
+    ) -> crate::error::Result<Option<IssueInfo>> {
         let conn = self.db.conn();
         // Read current, apply changes, write back
-        let current = conn
+        let current = match conn
             .query_row(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM issues WHERE id = ?1 AND project_id = ?2",
                 rusqlite::params![issue_id, project_id],
                 Self::row_to_issue,
             )
-            .optional()
-            .expect("failed to get issue for update")?;
+            .optional()?
+        {
+            Some(c) => c,
+            None => return Ok(None),
+        };
 
         let new_title = title.unwrap_or(current.title);
         let new_desc = description.or(current.description);
@@ -179,28 +173,26 @@ impl IssuesState {
         conn.execute(
             "UPDATE issues SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
             rusqlite::params![new_title, new_desc, new_status, issue_id, project_id],
-        )
-        .expect("failed to update issue");
+        )?;
 
-        Some(IssueInfo {
+        Ok(Some(IssueInfo {
             id: current.id,
             project_id: current.project_id,
             title: new_title,
             description: new_desc,
             status: new_status,
             created_at: current.created_at,
-        })
+        }))
     }
 
     /// Delete an issue
-    pub fn delete_issue(&self, project_id: &str, issue_id: &str) -> bool {
+    pub fn delete_issue(&self, project_id: &str, issue_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM issues WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![issue_id, project_id],
-        )
-        .expect("failed to delete issue")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     /// Add a comment to an issue
@@ -209,9 +201,11 @@ impl IssuesState {
         project_id: &str,
         issue_id: &str,
         body: String,
-    ) -> Option<CommentInfo> {
+    ) -> crate::error::Result<Option<CommentInfo>> {
         // Verify the issue exists
-        self.get_issue(project_id, issue_id)?;
+        if self.get_issue(project_id, issue_id)?.is_none() {
+            return Ok(None);
+        }
 
         let comment_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -231,41 +225,36 @@ impl IssuesState {
                 comment.body,
                 comment.created_at
             ],
-        )
-        .expect("failed to add comment");
-        Some(comment)
+        )?;
+        Ok(Some(comment))
     }
 
     /// List comments for an issue
-    pub fn list_comments(&self, _project_id: &str, issue_id: &str) -> Vec<CommentInfo> {
+    pub fn list_comments(&self, _project_id: &str, issue_id: &str) -> crate::error::Result<Vec<CommentInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, issue_id, body, created_at FROM issue_comments WHERE issue_id = ?1",
-            )
-            .expect("failed to prepare list comments");
-        stmt.query_map(rusqlite::params![issue_id], |row| {
+            )?;
+        let items = stmt.query_map(rusqlite::params![issue_id], |row| {
             Ok(CommentInfo {
                 id: row.get(0)?,
                 issue_id: row.get(1)?,
                 body: row.get(2)?,
                 created_at: row.get(3)?,
             })
-        })
-        .expect("failed to list comments")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Delete a comment from an issue
-    pub fn delete_comment(&self, _project_id: &str, issue_id: &str, comment_id: &str) -> bool {
+    pub fn delete_comment(&self, _project_id: &str, issue_id: &str, comment_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM issue_comments WHERE id = ?1 AND issue_id = ?2",
             rusqlite::params![comment_id, issue_id],
-        )
-        .expect("failed to delete comment")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     fn row_to_issue(row: &rusqlite::Row<'_>) -> rusqlite::Result<IssueInfo> {

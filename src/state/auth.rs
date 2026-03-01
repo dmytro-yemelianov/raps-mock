@@ -61,7 +61,7 @@ impl AuthState {
         client_id: &str,
         expires_in: u64,
         scope: Option<String>,
-    ) -> TokenInfo {
+    ) -> crate::error::Result<TokenInfo> {
         let now = Self::current_timestamp();
         let expires_at = now + expires_in;
 
@@ -96,15 +96,15 @@ impl AuthState {
                 token.refresh_token,
                 token.scope,
             ],
-        ).expect("failed to insert token");
+        )?;
 
-        token
+        Ok(token)
     }
 
     /// Get token info for a client
-    pub fn get_token(&self, client_id: &str) -> Option<TokenInfo> {
+    pub fn get_token(&self, client_id: &str) -> crate::error::Result<Option<TokenInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT client_id, access_token, token_type, expires_in, expires_at, refresh_token, scope
              FROM tokens WHERE client_id = ?1",
             rusqlite::params![client_id],
@@ -120,33 +120,31 @@ impl AuthState {
                 })
             },
         )
-        .optional()
-        .expect("failed to query token")
+        .optional()?)
     }
 
     /// Validate an access token - O(1) lookup via UNIQUE index
-    pub fn validate_token(&self, token: &str) -> bool {
+    pub fn validate_token(&self, token: &str) -> crate::error::Result<bool> {
         let now = Self::current_timestamp();
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT expires_at FROM tokens WHERE access_token = ?1",
             rusqlite::params![token],
             |row| row.get::<_, i64>(0),
         )
-        .optional()
-        .expect("failed to validate token")
+        .optional()?
         .map(|expires_at| (expires_at as u64) > now)
-        .unwrap_or(false)
+        .unwrap_or(false))
     }
 
     /// Revoke a token
-    pub fn revoke_token(&self, token: &str) {
+    pub fn revoke_token(&self, token: &str) -> crate::error::Result<()> {
         let conn = self.db.conn();
         conn.execute(
             "DELETE FROM tokens WHERE access_token = ?1",
             rusqlite::params![token],
-        )
-        .expect("failed to revoke token");
+        )?;
+        Ok(())
     }
 }
 

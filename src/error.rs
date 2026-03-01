@@ -20,6 +20,9 @@ pub enum MockError {
 
     #[error("State persistence error: {0}")]
     StatePersistence(String),
+
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, MockError>;

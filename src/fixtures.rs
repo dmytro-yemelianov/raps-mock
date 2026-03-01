@@ -136,7 +136,7 @@ pub fn load_fixtures(path: &Path, state: &StateManager) -> Result<FixtureStats> 
     for bucket in &data.buckets {
         state
             .buckets
-            .create_bucket(bucket.bucket_key.clone(), bucket.policy_key.clone());
+            .create_bucket(bucket.bucket_key.clone(), bucket.policy_key.clone())?;
         stats.buckets += 1;
     }
 
@@ -147,7 +147,7 @@ pub fn load_fixtures(path: &Path, state: &StateManager) -> Result<FixtureStats> 
             obj.object_key.clone(),
             obj.size,
             Some(obj.content_type.clone()),
-        );
+        )?;
         stats.objects += 1;
     }
 
@@ -161,7 +161,7 @@ pub fn load_fixtures(path: &Path, state: &StateManager) -> Result<FixtureStats> 
             issue.project_id.clone(),
             issue.title.clone(),
             issue.description.clone(),
-        );
+        )?;
         stats.issues += 1;
     }
 
@@ -176,7 +176,7 @@ pub fn load_fixtures(path: &Path, state: &StateManager) -> Result<FixtureStats> 
                 folder: None,
                 workflow: None,
             },
-        );
+        )?;
         stats.webhooks += 1;
     }
 

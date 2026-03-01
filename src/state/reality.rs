@@ -29,17 +29,14 @@ impl RealityState {
         Self { db }
     }
 
-    pub fn list_photoscenes(&self) -> Vec<PhotosceneInfo> {
+    pub fn list_photoscenes(&self) -> crate::error::Result<Vec<PhotosceneInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT photoscene_id, name, scene_type, convert_format, status, progress, progress_msg, scene_link FROM photoscenes",
-            )
-            .expect("failed to prepare list photoscenes");
-        stmt.query_map([], Self::row_to_photoscene)
-            .expect("failed to list photoscenes")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map([], Self::row_to_photoscene)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     pub fn create_photoscene(
@@ -47,7 +44,7 @@ impl RealityState {
         name: String,
         scene_type: String,
         convert_format: String,
-    ) -> PhotosceneInfo {
+    ) -> crate::error::Result<PhotosceneInfo> {
         let id = format!("ps-{}", uuid::Uuid::new_v4());
         let info = PhotosceneInfo {
             photoscene_id: id.clone(),
@@ -73,43 +70,39 @@ impl RealityState {
                 info.progress_msg,
                 info.scene_link,
             ],
-        )
-        .expect("failed to create photoscene");
-        info
+        )?;
+        Ok(info)
     }
 
-    pub fn get_photoscene(&self, id: &str) -> Option<PhotosceneInfo> {
+    pub fn get_photoscene(&self, id: &str) -> crate::error::Result<Option<PhotosceneInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT photoscene_id, name, scene_type, convert_format, status, progress, progress_msg, scene_link
              FROM photoscenes WHERE photoscene_id = ?1",
             rusqlite::params![id],
             Self::row_to_photoscene,
         )
-        .optional()
-        .expect("failed to get photoscene")
+        .optional()?)
     }
 
-    pub fn process_photoscene(&self, id: &str) -> bool {
+    pub fn process_photoscene(&self, id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
         let rows = conn
             .execute(
                 "UPDATE photoscenes SET status = 'Done', progress = '100', progress_msg = 'Complete', scene_link = 'https://example.com/download/model.obj'
                  WHERE photoscene_id = ?1",
                 rusqlite::params![id],
-            )
-            .expect("failed to process photoscene");
-        rows > 0
+            )?;
+        Ok(rows > 0)
     }
 
-    pub fn delete_photoscene(&self, id: &str) -> bool {
+    pub fn delete_photoscene(&self, id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM photoscenes WHERE photoscene_id = ?1",
             rusqlite::params![id],
-        )
-        .expect("failed to delete photoscene")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     fn row_to_photoscene(row: &rusqlite::Row<'_>) -> rusqlite::Result<PhotosceneInfo> {

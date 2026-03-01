@@ -35,7 +35,7 @@ pub async fn auth_middleware(
     if let Some(token) = token {
         // Validate token against state if available
         if let Some(Extension(ref state_manager)) = state {
-            if state_manager.auth.validate_token(token) {
+            if state_manager.auth.validate_token(token).unwrap_or(false) {
                 return next.run(request).await;
             }
             // Token validation failed

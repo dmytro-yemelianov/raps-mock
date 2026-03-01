@@ -45,7 +45,7 @@ impl WebhooksState {
         event: String,
         system: String,
         scope: WebhookScope,
-    ) -> WebhookSubscription {
+    ) -> crate::error::Result<WebhookSubscription> {
         let hook_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let subscription = WebhookSubscription {
@@ -74,48 +74,42 @@ impl WebhooksState {
                 subscription.status,
                 subscription.created_date,
             ],
-        )
-        .expect("failed to create webhook");
-        subscription
+        )?;
+        Ok(subscription)
     }
 
     /// Get a subscription
-    pub fn get_subscription(&self, hook_id: &str) -> Option<WebhookSubscription> {
+    pub fn get_subscription(&self, hook_id: &str) -> crate::error::Result<Option<WebhookSubscription>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT hook_id, tenant, callback_url, event, system, scope_folder, scope_workflow, status, created_date
              FROM webhooks WHERE hook_id = ?1",
             rusqlite::params![hook_id],
             Self::row_to_subscription,
         )
-        .optional()
-        .expect("failed to get webhook")
+        .optional()?)
     }
 
     /// List all subscriptions
-    pub fn list_subscriptions(&self) -> Vec<WebhookSubscription> {
+    pub fn list_subscriptions(&self) -> crate::error::Result<Vec<WebhookSubscription>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT hook_id, tenant, callback_url, event, system, scope_folder, scope_workflow, status, created_date FROM webhooks",
-            )
-            .expect("failed to prepare list webhooks");
-        stmt.query_map([], Self::row_to_subscription)
-            .expect("failed to list webhooks")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map([], Self::row_to_subscription)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Delete a subscription
-    pub fn delete_subscription(&self, hook_id: &str) -> bool {
+    pub fn delete_subscription(&self, hook_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
         let rows = conn
             .execute(
                 "DELETE FROM webhooks WHERE hook_id = ?1",
                 rusqlite::params![hook_id],
-            )
-            .expect("failed to delete webhook");
-        rows > 0
+            )?;
+        Ok(rows > 0)
     }
 
     fn row_to_subscription(row: &rusqlite::Row<'_>) -> rusqlite::Result<WebhookSubscription> {

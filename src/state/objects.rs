@@ -36,7 +36,7 @@ impl ObjectState {
         object_key: String,
         size: u64,
         content_type: Option<String>,
-    ) -> ObjectInfo {
+    ) -> crate::error::Result<ObjectInfo> {
         let object_id = format!("urn:adsk.objects:os.object:{}/{}", bucket_key, object_key);
         let object = ObjectInfo {
             bucket_key: bucket_key.clone(),
@@ -64,62 +64,53 @@ impl ObjectState {
                 object.content_type,
                 object.location,
             ],
-        )
-        .expect("failed to upload object");
-        object
+        )?;
+        Ok(object)
     }
 
     /// Get an object
-    pub fn get_object(&self, bucket_key: &str, object_key: &str) -> Option<ObjectInfo> {
+    pub fn get_object(&self, bucket_key: &str, object_key: &str) -> crate::error::Result<Option<ObjectInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location
              FROM objects WHERE bucket_key = ?1 AND object_key = ?2",
             rusqlite::params![bucket_key, object_key],
             Self::row_to_object,
         )
-        .optional()
-        .expect("failed to get object")
+        .optional()?)
     }
 
     /// List objects in a bucket
-    pub fn list_objects(&self, bucket_key: &str) -> Vec<ObjectInfo> {
+    pub fn list_objects(&self, bucket_key: &str) -> crate::error::Result<Vec<ObjectInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location
                  FROM objects WHERE bucket_key = ?1",
-            )
-            .expect("failed to prepare list objects");
-        stmt.query_map(rusqlite::params![bucket_key], Self::row_to_object)
-            .expect("failed to list objects")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![bucket_key], Self::row_to_object)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Delete an object
-    pub fn delete_object(&self, bucket_key: &str, object_key: &str) -> bool {
+    pub fn delete_object(&self, bucket_key: &str, object_key: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM objects WHERE bucket_key = ?1 AND object_key = ?2",
             rusqlite::params![bucket_key, object_key],
-        )
-        .expect("failed to delete object")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     /// List all objects across all buckets
-    pub fn list_all(&self) -> Vec<ObjectInfo> {
+    pub fn list_all(&self) -> crate::error::Result<Vec<ObjectInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT bucket_key, object_key, object_id, sha1, size, content_type, location FROM objects",
-            )
-            .expect("failed to prepare list all objects");
-        stmt.query_map([], Self::row_to_object)
-            .expect("failed to list all objects")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map([], Self::row_to_object)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Copy an object from source to destination (server-side copy)
@@ -129,14 +120,17 @@ impl ObjectState {
         src_key: &str,
         dest_bucket: &str,
         dest_key: &str,
-    ) -> Option<ObjectInfo> {
-        let source = self.get_object(src_bucket, src_key)?;
-        Some(self.upload_object(
+    ) -> crate::error::Result<Option<ObjectInfo>> {
+        let source = match self.get_object(src_bucket, src_key)? {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        Ok(Some(self.upload_object(
             dest_bucket.to_string(),
             dest_key.to_string(),
             source.size,
             Some(source.content_type),
-        ))
+        )?))
     }
 
     fn row_to_object(row: &rusqlite::Row<'_>) -> rusqlite::Result<ObjectInfo> {

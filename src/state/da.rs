@@ -54,15 +54,12 @@ impl DaState {
 
     // ---- App Bundles ----
 
-    pub fn list_app_bundles(&self) -> Vec<String> {
+    pub fn list_app_bundles(&self) -> crate::error::Result<Vec<String>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id FROM app_bundles")
-            .expect("failed to prepare list app_bundles");
-        stmt.query_map([], |row| row.get(0))
-            .expect("failed to list app_bundles")
-            .filter_map(|r| r.ok())
-            .collect()
+            .prepare("SELECT id FROM app_bundles")?;
+        let items = stmt.query_map([], |row| row.get(0))?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     pub fn create_app_bundle(
@@ -70,7 +67,7 @@ impl DaState {
         id: String,
         engine: String,
         description: String,
-    ) -> AppBundleInfo {
+    ) -> crate::error::Result<AppBundleInfo> {
         let info = AppBundleInfo {
             id: id.clone(),
             engine,
@@ -81,32 +78,27 @@ impl DaState {
         conn.execute(
             "INSERT INTO app_bundles (id, engine, description, version) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![info.id, info.engine, info.description, info.version],
-        )
-        .expect("failed to create app bundle");
-        info
+        )?;
+        Ok(info)
     }
 
-    pub fn delete_app_bundle(&self, id: &str) -> bool {
+    pub fn delete_app_bundle(&self, id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM app_bundles WHERE id = ?1",
             rusqlite::params![id],
-        )
-        .expect("failed to delete app bundle")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     // ---- Activities ----
 
-    pub fn list_activities(&self) -> Vec<String> {
+    pub fn list_activities(&self) -> crate::error::Result<Vec<String>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id FROM activities")
-            .expect("failed to prepare list activities");
-        stmt.query_map([], |row| row.get(0))
-            .expect("failed to list activities")
-            .filter_map(|r| r.ok())
-            .collect()
+            .prepare("SELECT id FROM activities")?;
+        let items = stmt.query_map([], |row| row.get(0))?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     pub fn create_activity(
@@ -114,7 +106,7 @@ impl DaState {
         id: String,
         engine: String,
         description: Option<String>,
-    ) -> ActivityInfo {
+    ) -> crate::error::Result<ActivityInfo> {
         let info = ActivityInfo {
             id: id.clone(),
             engine,
@@ -125,42 +117,37 @@ impl DaState {
         conn.execute(
             "INSERT INTO activities (id, engine, description, version) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![info.id, info.engine, info.description, info.version],
-        )
-        .expect("failed to create activity");
-        info
+        )?;
+        Ok(info)
     }
 
-    pub fn delete_activity(&self, id: &str) -> bool {
+    pub fn delete_activity(&self, id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM activities WHERE id = ?1",
             rusqlite::params![id],
-        )
-        .expect("failed to delete activity")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     // ---- Work Items ----
 
-    pub fn list_work_items(&self) -> Vec<WorkItemInfo> {
+    pub fn list_work_items(&self) -> crate::error::Result<Vec<WorkItemInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id, status, progress, activity_id FROM work_items")
-            .expect("failed to prepare list work_items");
-        stmt.query_map([], |row| {
+            .prepare("SELECT id, status, progress, activity_id FROM work_items")?;
+        let items = stmt.query_map([], |row| {
             Ok(WorkItemInfo {
                 id: row.get(0)?,
                 status: row.get(1)?,
                 progress: row.get(2)?,
                 activity_id: row.get(3)?,
             })
-        })
-        .expect("failed to list work_items")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn create_work_item(&self, activity_id: String) -> WorkItemInfo {
+    pub fn create_work_item(&self, activity_id: String) -> crate::error::Result<WorkItemInfo> {
         let id = format!("workitem-{}", uuid::Uuid::new_v4());
         let info = WorkItemInfo {
             id: id.clone(),
@@ -172,14 +159,13 @@ impl DaState {
         conn.execute(
             "INSERT INTO work_items (id, status, progress, activity_id) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![info.id, info.status, info.progress, info.activity_id],
-        )
-        .expect("failed to create work item");
-        info
+        )?;
+        Ok(info)
     }
 
-    pub fn get_work_item(&self, id: &str) -> Option<WorkItemInfo> {
+    pub fn get_work_item(&self, id: &str) -> crate::error::Result<Option<WorkItemInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, status, progress, activity_id FROM work_items WHERE id = ?1",
             rusqlite::params![id],
             |row| {
@@ -191,7 +177,6 @@ impl DaState {
                 })
             },
         )
-        .optional()
-        .expect("failed to get work item")
+        .optional()?)
     }
 }

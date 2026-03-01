@@ -60,7 +60,7 @@ impl TranslationState {
     }
 
     /// Create a new translation job
-    pub fn create_job(&self, urn: String) -> TranslationJob {
+    pub fn create_job(&self, urn: String) -> crate::error::Result<TranslationJob> {
         let now = chrono::Utc::now().timestamp_millis();
         let job = TranslationJob {
             urn: urn.clone(),
@@ -72,15 +72,14 @@ impl TranslationState {
         conn.execute(
             "INSERT INTO translations (urn, status, progress, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![job.urn, job.status.as_str(), job.progress, job.created_at],
-        )
-        .expect("failed to create translation job");
-        job
+        )?;
+        Ok(job)
     }
 
     /// Get a translation job
-    pub fn get_job(&self, urn: &str) -> Option<TranslationJob> {
+    pub fn get_job(&self, urn: &str) -> crate::error::Result<Option<TranslationJob>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT urn, status, progress, created_at FROM translations WHERE urn = ?1",
             rusqlite::params![urn],
             |row| {
@@ -93,8 +92,7 @@ impl TranslationState {
                 })
             },
         )
-        .optional()
-        .expect("failed to get translation job")
+        .optional()?)
     }
 
     /// Update job status
@@ -103,28 +101,26 @@ impl TranslationState {
         urn: &str,
         status: TranslationStatus,
         progress: String,
-    ) -> bool {
+    ) -> crate::error::Result<bool> {
         let conn = self.db.conn();
         let rows = conn
             .execute(
                 "UPDATE translations SET status = ?1, progress = ?2 WHERE urn = ?3",
                 rusqlite::params![status.as_str(), progress, urn],
-            )
-            .expect("failed to update translation job");
+            )?;
         drop(conn);
         if status == TranslationStatus::Success {
-            self.generate_mock_metadata(urn);
+            self.generate_mock_metadata(urn)?;
         }
-        rows > 0
+        Ok(rows > 0)
     }
 
     /// List all translation jobs
-    pub fn list_all(&self) -> Vec<TranslationJob> {
+    pub fn list_all(&self) -> crate::error::Result<Vec<TranslationJob>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT urn, status, progress, created_at FROM translations")
-            .expect("failed to prepare list translations");
-        stmt.query_map([], |row| {
+            .prepare("SELECT urn, status, progress, created_at FROM translations")?;
+        let items = stmt.query_map([], |row| {
             let status_str: String = row.get(1)?;
             Ok(TranslationJob {
                 urn: row.get(0)?,
@@ -132,15 +128,13 @@ impl TranslationState {
                 progress: row.get(2)?,
                 created_at: row.get(3)?,
             })
-        })
-        .expect("failed to list translations")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Simulate job progression
-    pub fn simulate_progress(&self, urn: &str) {
-        if let Some(job) = self.get_job(urn) {
+    pub fn simulate_progress(&self, urn: &str) -> crate::error::Result<()> {
+        if let Some(job) = self.get_job(urn)? {
             let (new_status, new_progress) = match job.status {
                 TranslationStatus::Pending => (TranslationStatus::InProgress, "25%".to_string()),
                 TranslationStatus::InProgress => {
@@ -155,16 +149,17 @@ impl TranslationState {
                         (TranslationStatus::Success, "complete".to_string())
                     }
                 }
-                _ => return,
+                _ => return Ok(()),
             };
-            self.update_job_status(urn, new_status, new_progress);
+            self.update_job_status(urn, new_status, new_progress)?;
         }
+        Ok(())
     }
 
     /// Get model metadata for a translated URN
-    pub fn get_metadata(&self, urn: &str) -> Option<Value> {
+    pub fn get_metadata(&self, urn: &str) -> crate::error::Result<Option<Value>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT metadata_json FROM translations WHERE urn = ?1 AND status = 'success'",
             rusqlite::params![urn],
             |row| {
@@ -172,16 +167,15 @@ impl TranslationState {
                 Ok(json_str)
             },
         )
-        .optional()
-        .expect("failed to get metadata")
+        .optional()?
         .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| serde_json::from_str(&s).ok()))
     }
 
     /// Get object tree for a translated URN and view GUID
-    pub fn get_object_tree(&self, urn: &str, _guid: &str) -> Option<Value> {
+    pub fn get_object_tree(&self, urn: &str, _guid: &str) -> crate::error::Result<Option<Value>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT object_tree_json FROM translations WHERE urn = ?1 AND status = 'success'",
             rusqlite::params![urn],
             |row| {
@@ -189,16 +183,15 @@ impl TranslationState {
                 Ok(json_str)
             },
         )
-        .optional()
-        .expect("failed to get object tree")
+        .optional()?
         .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| serde_json::from_str(&s).ok()))
     }
 
     /// Get properties for a translated URN and view GUID
-    pub fn get_properties(&self, urn: &str, _guid: &str) -> Option<Value> {
+    pub fn get_properties(&self, urn: &str, _guid: &str) -> crate::error::Result<Option<Value>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT properties_json FROM translations WHERE urn = ?1 AND status = 'success'",
             rusqlite::params![urn],
             |row| {
@@ -206,14 +199,13 @@ impl TranslationState {
                 Ok(json_str)
             },
         )
-        .optional()
-        .expect("failed to get properties")
+        .optional()?
         .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| serde_json::from_str(&s).ok()))
     }
 
     /// Generate synthetic mock metadata when a translation succeeds
-    fn generate_mock_metadata(&self, urn: &str) {
+    fn generate_mock_metadata(&self, urn: &str) -> crate::error::Result<()> {
         let guid = format!("mock-guid-{}", &urn[..8.min(urn.len())]);
 
         let metadata = json!({
@@ -275,13 +267,13 @@ impl TranslationState {
         conn.execute(
             "UPDATE translations SET metadata_json = ?1, object_tree_json = ?2, properties_json = ?3 WHERE urn = ?4",
             rusqlite::params![
-                serde_json::to_string(&metadata).unwrap(),
-                serde_json::to_string(&object_tree).unwrap(),
-                serde_json::to_string(&properties).unwrap(),
+                serde_json::to_string(&metadata)?,
+                serde_json::to_string(&object_tree)?,
+                serde_json::to_string(&properties)?,
                 urn
             ],
-        )
-        .expect("failed to store mock metadata");
+        )?;
+        Ok(())
     }
 }
 

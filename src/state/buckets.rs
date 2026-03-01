@@ -35,7 +35,7 @@ impl BucketState {
     }
 
     /// Create a new bucket
-    pub fn create_bucket(&self, bucket_key: String, policy_key: String) -> BucketInfo {
+    pub fn create_bucket(&self, bucket_key: String, policy_key: String) -> crate::error::Result<BucketInfo> {
         let now = chrono::Utc::now().timestamp_millis();
         let bucket = BucketInfo {
             bucket_key: bucket_key.clone(),
@@ -44,7 +44,7 @@ impl BucketState {
             policy_key,
             permissions: vec![],
         };
-        let permissions_json = serde_json::to_string(&bucket.permissions).unwrap();
+        let permissions_json = serde_json::to_string(&bucket.permissions)?;
         let conn = self.db.conn();
         conn.execute(
             "INSERT INTO buckets (bucket_key, bucket_owner, created_date, policy_key, permissions)
@@ -56,15 +56,14 @@ impl BucketState {
                 bucket.policy_key,
                 permissions_json,
             ],
-        )
-        .expect("failed to create bucket");
-        bucket
+        )?;
+        Ok(bucket)
     }
 
     /// Get a bucket by key
-    pub fn get_bucket(&self, bucket_key: &str) -> Option<BucketInfo> {
+    pub fn get_bucket(&self, bucket_key: &str) -> crate::error::Result<Option<BucketInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT bucket_key, bucket_owner, created_date, policy_key, permissions
              FROM buckets WHERE bucket_key = ?1",
             rusqlite::params![bucket_key],
@@ -79,19 +78,17 @@ impl BucketState {
                 })
             },
         )
-        .optional()
-        .expect("failed to get bucket")
+        .optional()?)
     }
 
     /// List all buckets
-    pub fn list_buckets(&self) -> Vec<BucketInfo> {
+    pub fn list_buckets(&self) -> crate::error::Result<Vec<BucketInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT bucket_key, bucket_owner, created_date, policy_key, permissions FROM buckets",
-            )
-            .expect("failed to prepare list buckets");
-        stmt.query_map([], |row| {
+            )?;
+        let items = stmt.query_map([], |row| {
             let perms_json: String = row.get(4)?;
             Ok(BucketInfo {
                 bucket_key: row.get(0)?,
@@ -100,21 +97,18 @@ impl BucketState {
                 policy_key: row.get(3)?,
                 permissions: serde_json::from_str(&perms_json).unwrap_or_default(),
             })
-        })
-        .expect("failed to list buckets")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Delete a bucket
-    pub fn delete_bucket(&self, bucket_key: &str) -> bool {
+    pub fn delete_bucket(&self, bucket_key: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
         let rows = conn
             .execute(
                 "DELETE FROM buckets WHERE bucket_key = ?1",
                 rusqlite::params![bucket_key],
-            )
-            .expect("failed to delete bucket");
-        rows > 0
+            )?;
+        Ok(rows > 0)
     }
 }

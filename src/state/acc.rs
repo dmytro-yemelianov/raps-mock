@@ -139,30 +139,26 @@ impl AccState {
 
     // ---- RFIs ----
 
-    pub fn list_rfis(&self, project_id: &str) -> Vec<RfiInfo> {
+    pub fn list_rfis(&self, project_id: &str) -> crate::error::Result<Vec<RfiInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM rfis WHERE project_id = ?1",
-            )
-            .expect("failed to prepare list rfis");
-        stmt.query_map(rusqlite::params![project_id], Self::row_to_rfi)
-            .expect("failed to list rfis")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![project_id], Self::row_to_rfi)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn get_rfi(&self, project_id: &str, rfi_id: &str) -> Option<RfiInfo> {
+    pub fn get_rfi(&self, project_id: &str, rfi_id: &str) -> crate::error::Result<Option<RfiInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, project_id, title, description, status, created_at
              FROM rfis WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![rfi_id, project_id],
             Self::row_to_rfi,
         )
-        .optional()
-        .expect("failed to get rfi")
+        .optional()?)
     }
 
     pub fn create_rfi(
@@ -170,7 +166,7 @@ impl AccState {
         project_id: String,
         title: String,
         description: Option<String>,
-    ) -> RfiInfo {
+    ) -> crate::error::Result<RfiInfo> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let rfi = RfiInfo {
@@ -193,9 +189,8 @@ impl AccState {
                 rfi.status,
                 rfi.created_at
             ],
-        )
-        .expect("failed to create rfi");
-        rfi
+        )?;
+        Ok(rfi)
     }
 
     pub fn update_rfi(
@@ -205,8 +200,11 @@ impl AccState {
         title: Option<String>,
         description: Option<String>,
         status: Option<String>,
-    ) -> Option<RfiInfo> {
-        let current = self.get_rfi(project_id, rfi_id)?;
+    ) -> crate::error::Result<Option<RfiInfo>> {
+        let current = match self.get_rfi(project_id, rfi_id)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
         let new_title = title.unwrap_or(current.title);
         let new_desc = description.or(current.description);
         let new_status = status.unwrap_or(current.status);
@@ -214,54 +212,48 @@ impl AccState {
         conn.execute(
             "UPDATE rfis SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
             rusqlite::params![new_title, new_desc, new_status, rfi_id, project_id],
-        )
-        .expect("failed to update rfi");
-        Some(RfiInfo {
+        )?;
+        Ok(Some(RfiInfo {
             id: current.id,
             project_id: current.project_id,
             title: new_title,
             description: new_desc,
             status: new_status,
             created_at: current.created_at,
-        })
+        }))
     }
 
-    pub fn delete_rfi(&self, project_id: &str, rfi_id: &str) -> bool {
+    pub fn delete_rfi(&self, project_id: &str, rfi_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM rfis WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![rfi_id, project_id],
-        )
-        .expect("failed to delete rfi")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     // ---- Assets ----
 
-    pub fn list_assets(&self, project_id: &str) -> Vec<AssetInfo> {
+    pub fn list_assets(&self, project_id: &str) -> crate::error::Result<Vec<AssetInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM assets WHERE project_id = ?1",
-            )
-            .expect("failed to prepare list assets");
-        stmt.query_map(rusqlite::params![project_id], Self::row_to_asset)
-            .expect("failed to list assets")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![project_id], Self::row_to_asset)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn get_asset(&self, project_id: &str, asset_id: &str) -> Option<AssetInfo> {
+    pub fn get_asset(&self, project_id: &str, asset_id: &str) -> crate::error::Result<Option<AssetInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, project_id, title, description, status, created_at
              FROM assets WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![asset_id, project_id],
             Self::row_to_asset,
         )
-        .optional()
-        .expect("failed to get asset")
+        .optional()?)
     }
 
     pub fn create_asset(
@@ -269,7 +261,7 @@ impl AccState {
         project_id: String,
         title: String,
         description: Option<String>,
-    ) -> AssetInfo {
+    ) -> crate::error::Result<AssetInfo> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let asset = AssetInfo {
@@ -292,9 +284,8 @@ impl AccState {
                 asset.status,
                 asset.created_at
             ],
-        )
-        .expect("failed to create asset");
-        asset
+        )?;
+        Ok(asset)
     }
 
     pub fn update_asset(
@@ -304,8 +295,11 @@ impl AccState {
         title: Option<String>,
         description: Option<String>,
         status: Option<String>,
-    ) -> Option<AssetInfo> {
-        let current = self.get_asset(project_id, asset_id)?;
+    ) -> crate::error::Result<Option<AssetInfo>> {
+        let current = match self.get_asset(project_id, asset_id)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
         let new_title = title.unwrap_or(current.title);
         let new_desc = description.or(current.description);
         let new_status = status.unwrap_or(current.status);
@@ -313,54 +307,48 @@ impl AccState {
         conn.execute(
             "UPDATE assets SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
             rusqlite::params![new_title, new_desc, new_status, asset_id, project_id],
-        )
-        .expect("failed to update asset");
-        Some(AssetInfo {
+        )?;
+        Ok(Some(AssetInfo {
             id: current.id,
             project_id: current.project_id,
             title: new_title,
             description: new_desc,
             status: new_status,
             created_at: current.created_at,
-        })
+        }))
     }
 
-    pub fn delete_asset(&self, project_id: &str, asset_id: &str) -> bool {
+    pub fn delete_asset(&self, project_id: &str, asset_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM assets WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![asset_id, project_id],
-        )
-        .expect("failed to delete asset")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     // ---- Submittals ----
 
-    pub fn list_submittals(&self, project_id: &str) -> Vec<SubmittalInfo> {
+    pub fn list_submittals(&self, project_id: &str) -> crate::error::Result<Vec<SubmittalInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM submittals WHERE project_id = ?1",
-            )
-            .expect("failed to prepare list submittals");
-        stmt.query_map(rusqlite::params![project_id], Self::row_to_submittal)
-            .expect("failed to list submittals")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![project_id], Self::row_to_submittal)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn get_submittal(&self, project_id: &str, submittal_id: &str) -> Option<SubmittalInfo> {
+    pub fn get_submittal(&self, project_id: &str, submittal_id: &str) -> crate::error::Result<Option<SubmittalInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, project_id, title, description, status, created_at
              FROM submittals WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![submittal_id, project_id],
             Self::row_to_submittal,
         )
-        .optional()
-        .expect("failed to get submittal")
+        .optional()?)
     }
 
     pub fn create_submittal(
@@ -368,7 +356,7 @@ impl AccState {
         project_id: String,
         title: String,
         description: Option<String>,
-    ) -> SubmittalInfo {
+    ) -> crate::error::Result<SubmittalInfo> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let submittal = SubmittalInfo {
@@ -391,9 +379,8 @@ impl AccState {
                 submittal.status,
                 submittal.created_at
             ],
-        )
-        .expect("failed to create submittal");
-        submittal
+        )?;
+        Ok(submittal)
     }
 
     pub fn update_submittal(
@@ -403,8 +390,11 @@ impl AccState {
         title: Option<String>,
         description: Option<String>,
         status: Option<String>,
-    ) -> Option<SubmittalInfo> {
-        let current = self.get_submittal(project_id, submittal_id)?;
+    ) -> crate::error::Result<Option<SubmittalInfo>> {
+        let current = match self.get_submittal(project_id, submittal_id)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
         let new_title = title.unwrap_or(current.title);
         let new_desc = description.or(current.description);
         let new_status = status.unwrap_or(current.status);
@@ -412,54 +402,48 @@ impl AccState {
         conn.execute(
             "UPDATE submittals SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
             rusqlite::params![new_title, new_desc, new_status, submittal_id, project_id],
-        )
-        .expect("failed to update submittal");
-        Some(SubmittalInfo {
+        )?;
+        Ok(Some(SubmittalInfo {
             id: current.id,
             project_id: current.project_id,
             title: new_title,
             description: new_desc,
             status: new_status,
             created_at: current.created_at,
-        })
+        }))
     }
 
-    pub fn delete_submittal(&self, project_id: &str, submittal_id: &str) -> bool {
+    pub fn delete_submittal(&self, project_id: &str, submittal_id: &str) -> crate::error::Result<bool> {
         let conn = self.db.conn();
-        conn.execute(
+        let rows = conn.execute(
             "DELETE FROM submittals WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![submittal_id, project_id],
-        )
-        .expect("failed to delete submittal")
-            > 0
+        )?;
+        Ok(rows > 0)
     }
 
     // ---- Checklists ----
 
-    pub fn list_checklists(&self, project_id: &str) -> Vec<ChecklistInfo> {
+    pub fn list_checklists(&self, project_id: &str) -> crate::error::Result<Vec<ChecklistInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT id, project_id, title, description, status, created_at
                  FROM checklists WHERE project_id = ?1",
-            )
-            .expect("failed to prepare list checklists");
-        stmt.query_map(rusqlite::params![project_id], Self::row_to_checklist)
-            .expect("failed to list checklists")
-            .filter_map(|r| r.ok())
-            .collect()
+            )?;
+        let items = stmt.query_map(rusqlite::params![project_id], Self::row_to_checklist)?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn get_checklist(&self, project_id: &str, checklist_id: &str) -> Option<ChecklistInfo> {
+    pub fn get_checklist(&self, project_id: &str, checklist_id: &str) -> crate::error::Result<Option<ChecklistInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, project_id, title, description, status, created_at
              FROM checklists WHERE id = ?1 AND project_id = ?2",
             rusqlite::params![checklist_id, project_id],
             Self::row_to_checklist,
         )
-        .optional()
-        .expect("failed to get checklist")
+        .optional()?)
     }
 
     pub fn create_checklist(
@@ -467,7 +451,7 @@ impl AccState {
         project_id: String,
         title: String,
         description: Option<String>,
-    ) -> ChecklistInfo {
+    ) -> crate::error::Result<ChecklistInfo> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let checklist = ChecklistInfo {
@@ -490,9 +474,8 @@ impl AccState {
                 checklist.status,
                 checklist.created_at
             ],
-        )
-        .expect("failed to create checklist");
-        checklist
+        )?;
+        Ok(checklist)
     }
 
     pub fn update_checklist(
@@ -502,8 +485,11 @@ impl AccState {
         title: Option<String>,
         description: Option<String>,
         status: Option<String>,
-    ) -> Option<ChecklistInfo> {
-        let current = self.get_checklist(project_id, checklist_id)?;
+    ) -> crate::error::Result<Option<ChecklistInfo>> {
+        let current = match self.get_checklist(project_id, checklist_id)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
         let new_title = title.unwrap_or(current.title);
         let new_desc = description.or(current.description);
         let new_status = status.unwrap_or(current.status);
@@ -511,16 +497,15 @@ impl AccState {
         conn.execute(
             "UPDATE checklists SET title = ?1, description = ?2, status = ?3 WHERE id = ?4 AND project_id = ?5",
             rusqlite::params![new_title, new_desc, new_status, checklist_id, project_id],
-        )
-        .expect("failed to update checklist");
-        Some(ChecklistInfo {
+        )?;
+        Ok(Some(ChecklistInfo {
             id: current.id,
             project_id: current.project_id,
             title: new_title,
             description: new_desc,
             status: new_status,
             created_at: current.created_at,
-        })
+        }))
     }
 
     /// Return a static list of checklist templates

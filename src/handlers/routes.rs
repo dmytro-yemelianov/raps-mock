@@ -12,6 +12,22 @@ use serde_json::{Value, json};
 
 use crate::state::StateManager;
 
+/// Unwrap a `crate::error::Result`, returning HTTP 500 on error.
+macro_rules! try_state {
+    ($expr:expr) => {
+        match $expr {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    JsonResponse(serde_json::json!({"error": format!("Internal error: {}", e)})),
+                )
+                    .into_response();
+            }
+        }
+    };
+}
+
 /// Decode a base64-encoded URN, supporting both standard and URL-safe alphabets.
 /// Returns the original string if decoding fails (already decoded or not base64).
 fn decode_base64_urn(urn: &str) -> String {
@@ -44,7 +60,7 @@ pub async fn handle_auth_token(state: Option<StateManager>, body: Value) -> impl
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let token = state_manager.auth.generate_token(client_id, 3600, scope);
+        let token = try_state!(state_manager.auth.generate_token(client_id, 3600, scope));
 
         let mut response = json!({
             "access_token": token.access_token,
@@ -53,10 +69,8 @@ pub async fn handle_auth_token(state: Option<StateManager>, body: Value) -> impl
         });
 
         // Include refresh_token for 3-legged flows
-        if grant_type == "authorization_code" || grant_type == "refresh_token" {
-            if let Some(ref rt) = token.refresh_token {
-                response["refresh_token"] = json!(rt);
-            }
+        if (grant_type == "authorization_code" || grant_type == "refresh_token") && let Some(ref rt) = token.refresh_token {
+            response["refresh_token"] = json!(rt);
         }
 
         (axum::http::StatusCode::OK, JsonResponse(response)).into_response()
@@ -96,7 +110,7 @@ pub async fn handle_userinfo() -> impl IntoResponse {
 
 pub async fn handle_list_buckets(state: Option<StateManager>) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let buckets = state_manager.buckets.list_buckets();
+        let buckets = try_state!(state_manager.buckets.list_buckets());
         let items: Vec<Value> = buckets
             .into_iter()
             .map(|b| {
@@ -135,9 +149,9 @@ pub async fn handle_create_bucket(state: Option<StateManager>, body: Value) -> i
             .and_then(|v| v.as_str())
             .unwrap_or("transient");
 
-        let bucket = state_manager
+        let bucket = try_state!(state_manager
             .buckets
-            .create_bucket(bucket_key.to_string(), policy_key.to_string());
+            .create_bucket(bucket_key.to_string(), policy_key.to_string()));
 
         (axum::http::StatusCode::OK, JsonResponse(json!(bucket))).into_response()
     } else {
@@ -160,7 +174,7 @@ pub async fn handle_list_objects(
     bucket_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let objects = state_manager.objects.list_objects(&bucket_key);
+        let objects = try_state!(state_manager.objects.list_objects(&bucket_key));
         let items: Vec<Value> = objects
             .into_iter()
             .map(|o| {
@@ -193,7 +207,7 @@ pub async fn handle_list_objects(
 
 pub async fn handle_list_hubs(state: Option<StateManager>) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let hubs = state_manager.projects.list_hubs();
+        let hubs = try_state!(state_manager.projects.list_hubs());
         let data: Vec<Value> = hubs
             .into_iter()
             .map(|h| {
@@ -229,7 +243,7 @@ pub async fn handle_list_hubs(state: Option<StateManager>) -> impl IntoResponse 
 
 pub async fn handle_get_hub(state: Option<StateManager>, hub_id: String) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(hub) = state_manager.projects.get_hub(&hub_id) {
+        if let Some(hub) = try_state!(state_manager.projects.get_hub(&hub_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -279,7 +293,7 @@ pub async fn handle_list_hub_projects(
     hub_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let projects = state_manager.projects.list_projects(&hub_id);
+        let projects = try_state!(state_manager.projects.list_projects(&hub_id));
         let data: Vec<Value> = projects
             .into_iter()
             .map(|p| {
@@ -336,7 +350,7 @@ pub async fn handle_create_translation(
 
         // Decode the base64 URN before storing so lookups match
         let decoded_urn = decode_base64_urn(input_urn);
-        let job = state_manager.translations.create_job(decoded_urn);
+        let job = try_state!(state_manager.translations.create_job(decoded_urn));
 
         (
             axum::http::StatusCode::OK,
@@ -365,9 +379,9 @@ pub async fn handle_get_manifest(state: Option<StateManager>, urn: String) -> im
 
     if let Some(ref state_manager) = state {
         // Simulate progress on each poll (like real APS: repeated GET advances the job)
-        state_manager.translations.simulate_progress(&decoded_urn);
+        try_state!(state_manager.translations.simulate_progress(&decoded_urn));
 
-        if let Some(job) = state_manager.translations.get_job(&decoded_urn) {
+        if let Some(job) = try_state!(state_manager.translations.get_job(&decoded_urn)) {
             let status_str = match job.status {
                 crate::state::translations::TranslationStatus::Pending => "pending",
                 crate::state::translations::TranslationStatus::InProgress => "inprogress",
@@ -430,7 +444,7 @@ pub async fn handle_list_issues(
     project_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let issues = state_manager.issues.list_issues(&project_id);
+        let issues = try_state!(state_manager.issues.list_issues(&project_id));
         let total = issues.len() as i32;
         let results: Vec<Value> = issues
             .into_iter()
@@ -489,9 +503,9 @@ pub async fn handle_create_issue(
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let issue = state_manager
+        let issue = try_state!(state_manager
             .issues
-            .create_issue(project_id, title, description);
+            .create_issue(project_id, title, description));
 
         (
             axum::http::StatusCode::CREATED,
@@ -544,7 +558,7 @@ pub async fn handle_get_issue(
     issue_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(issue) = state_manager.issues.get_issue(&project_id, &issue_id) {
+        if let Some(issue) = try_state!(state_manager.issues.get_issue(&project_id, &issue_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -599,9 +613,9 @@ pub async fn handle_update_issue(
             .map(|s| s.to_string());
 
         if let Some(issue) =
-            state_manager
+            try_state!(state_manager
                 .issues
-                .update_issue(&project_id, &issue_id, title, description, status)
+                .update_issue(&project_id, &issue_id, title, description, status))
         {
             (
                 axum::http::StatusCode::OK,
@@ -642,7 +656,7 @@ pub async fn handle_delete_issue(
     issue_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.issues.delete_issue(&project_id, &issue_id) {
+        if try_state!(state_manager.issues.delete_issue(&project_id, &issue_id)) {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -665,7 +679,7 @@ pub async fn handle_list_issue_comments(
     issue_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let comments = state_manager.issues.list_comments(&project_id, &issue_id);
+        let comments = try_state!(state_manager.issues.list_comments(&project_id, &issue_id));
         let total = comments.len() as i32;
         let results: Vec<Value> = comments
             .into_iter()
@@ -716,9 +730,9 @@ pub async fn handle_create_issue_comment(
             .to_string();
 
         if let Some(comment) =
-            state_manager
+            try_state!(state_manager
                 .issues
-                .add_comment(&project_id, &issue_id, comment_body)
+                .add_comment(&project_id, &issue_id, comment_body))
         {
             (
                 axum::http::StatusCode::CREATED,
@@ -760,9 +774,9 @@ pub async fn handle_delete_issue_comment(
     comment_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager
+        if try_state!(state_manager
             .issues
-            .delete_comment(&project_id, &issue_id, &comment_id)
+            .delete_comment(&project_id, &issue_id, &comment_id))
         {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
@@ -802,7 +816,7 @@ pub async fn handle_list_rfis(
     project_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let rfis = state_manager.acc.list_rfis(&project_id);
+        let rfis = try_state!(state_manager.acc.list_rfis(&project_id));
         let total = rfis.len() as i32;
         let results: Vec<Value> = rfis
             .into_iter()
@@ -851,7 +865,7 @@ pub async fn handle_create_rfi(
             .get("description")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let rfi = state_manager.acc.create_rfi(project_id, title, description);
+        let rfi = try_state!(state_manager.acc.create_rfi(project_id, title, description));
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
@@ -882,7 +896,7 @@ pub async fn handle_get_rfi(
     rfi_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(rfi) = state_manager.acc.get_rfi(&project_id, &rfi_id) {
+        if let Some(rfi) = try_state!(state_manager.acc.get_rfi(&project_id, &rfi_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -937,9 +951,9 @@ pub async fn handle_update_rfi(
             .map(|s| s.to_string());
 
         if let Some(rfi) =
-            state_manager
+            try_state!(state_manager
                 .acc
-                .update_rfi(&project_id, &rfi_id, title, description, status)
+                .update_rfi(&project_id, &rfi_id, title, description, status))
         {
             (
                 axum::http::StatusCode::OK,
@@ -980,7 +994,7 @@ pub async fn handle_delete_rfi(
     rfi_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.acc.delete_rfi(&project_id, &rfi_id) {
+        if try_state!(state_manager.acc.delete_rfi(&project_id, &rfi_id)) {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -1004,7 +1018,7 @@ pub async fn handle_list_assets(
     project_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let assets = state_manager.acc.list_assets(&project_id);
+        let assets = try_state!(state_manager.acc.list_assets(&project_id));
         let total = assets.len() as i32;
         let results: Vec<Value> = assets
             .into_iter()
@@ -1053,9 +1067,9 @@ pub async fn handle_create_asset(
             .get("description")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let asset = state_manager
+        let asset = try_state!(state_manager
             .acc
-            .create_asset(project_id, title, description);
+            .create_asset(project_id, title, description));
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
@@ -1086,7 +1100,7 @@ pub async fn handle_get_asset(
     asset_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(asset) = state_manager.acc.get_asset(&project_id, &asset_id) {
+        if let Some(asset) = try_state!(state_manager.acc.get_asset(&project_id, &asset_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -1141,9 +1155,9 @@ pub async fn handle_update_asset(
             .map(|s| s.to_string());
 
         if let Some(asset) =
-            state_manager
+            try_state!(state_manager
                 .acc
-                .update_asset(&project_id, &asset_id, title, description, status)
+                .update_asset(&project_id, &asset_id, title, description, status))
         {
             (
                 axum::http::StatusCode::OK,
@@ -1184,7 +1198,7 @@ pub async fn handle_delete_asset(
     asset_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.acc.delete_asset(&project_id, &asset_id) {
+        if try_state!(state_manager.acc.delete_asset(&project_id, &asset_id)) {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -1208,7 +1222,7 @@ pub async fn handle_list_submittals(
     project_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let submittals = state_manager.acc.list_submittals(&project_id);
+        let submittals = try_state!(state_manager.acc.list_submittals(&project_id));
         let total = submittals.len() as i32;
         let results: Vec<Value> = submittals
             .into_iter()
@@ -1257,9 +1271,9 @@ pub async fn handle_create_submittal(
             .get("description")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let submittal = state_manager
+        let submittal = try_state!(state_manager
             .acc
-            .create_submittal(project_id, title, description);
+            .create_submittal(project_id, title, description));
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
@@ -1290,7 +1304,7 @@ pub async fn handle_get_submittal(
     submittal_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(submittal) = state_manager.acc.get_submittal(&project_id, &submittal_id) {
+        if let Some(submittal) = try_state!(state_manager.acc.get_submittal(&project_id, &submittal_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -1344,13 +1358,13 @@ pub async fn handle_update_submittal(
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        if let Some(submittal) = state_manager.acc.update_submittal(
+        if let Some(submittal) = try_state!(state_manager.acc.update_submittal(
             &project_id,
             &submittal_id,
             title,
             description,
             status,
-        ) {
+        )) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -1390,9 +1404,9 @@ pub async fn handle_delete_submittal(
     submittal_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager
+        if try_state!(state_manager
             .acc
-            .delete_submittal(&project_id, &submittal_id)
+            .delete_submittal(&project_id, &submittal_id))
         {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
@@ -1417,7 +1431,7 @@ pub async fn handle_list_checklists(
     project_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let checklists = state_manager.acc.list_checklists(&project_id);
+        let checklists = try_state!(state_manager.acc.list_checklists(&project_id));
         let total = checklists.len() as i32;
         let results: Vec<Value> = checklists
             .into_iter()
@@ -1466,9 +1480,9 @@ pub async fn handle_create_checklist(
             .get("description")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let checklist = state_manager
+        let checklist = try_state!(state_manager
             .acc
-            .create_checklist(project_id, title, description);
+            .create_checklist(project_id, title, description));
         (
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
@@ -1499,7 +1513,7 @@ pub async fn handle_get_checklist(
     checklist_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(checklist) = state_manager.acc.get_checklist(&project_id, &checklist_id) {
+        if let Some(checklist) = try_state!(state_manager.acc.get_checklist(&project_id, &checklist_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -1553,13 +1567,13 @@ pub async fn handle_update_checklist(
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        if let Some(checklist) = state_manager.acc.update_checklist(
+        if let Some(checklist) = try_state!(state_manager.acc.update_checklist(
             &project_id,
             &checklist_id,
             title,
             description,
             status,
-        ) {
+        )) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -1634,7 +1648,7 @@ pub async fn handle_list_checklist_templates(
 
 pub async fn handle_list_all_webhooks(state: Option<StateManager>) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let subscriptions = state_manager.webhooks.list_subscriptions();
+        let subscriptions = try_state!(state_manager.webhooks.list_subscriptions());
         let data: Vec<Value> = subscriptions
             .into_iter()
             .map(|s| {
@@ -1675,7 +1689,7 @@ pub async fn handle_list_webhooks(
     system: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        let subscriptions = state_manager.webhooks.list_subscriptions();
+        let subscriptions = try_state!(state_manager.webhooks.list_subscriptions());
         let data: Vec<Value> = subscriptions
             .into_iter()
             .filter(|s| s.system == system)
@@ -1738,13 +1752,13 @@ pub async fn handle_create_webhook(
                 .map(|s| s.to_string()),
         };
 
-        let subscription = state_manager.webhooks.create_subscription(
+        let subscription = try_state!(state_manager.webhooks.create_subscription(
             system.clone(),
             callback_url,
             event.clone(),
             system,
             scope,
-        );
+        ));
 
         (
             axum::http::StatusCode::CREATED,
@@ -1779,7 +1793,7 @@ pub async fn handle_delete_webhook(
     hook_id: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.webhooks.delete_subscription(&hook_id) {
+        if try_state!(state_manager.webhooks.delete_subscription(&hook_id)) {
             (axum::http::StatusCode::NO_CONTENT, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -1802,7 +1816,7 @@ pub async fn handle_get_bucket(
     bucket_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(bucket) = state_manager.buckets.get_bucket(&bucket_key) {
+        if let Some(bucket) = try_state!(state_manager.buckets.get_bucket(&bucket_key)) {
             (axum::http::StatusCode::OK, JsonResponse(json!(bucket))).into_response()
         } else {
             (
@@ -1829,7 +1843,7 @@ pub async fn handle_delete_bucket(
     bucket_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager.buckets.delete_bucket(&bucket_key) {
+        if try_state!(state_manager.buckets.delete_bucket(&bucket_key)) {
             (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
         } else {
             (
@@ -1853,7 +1867,7 @@ pub async fn handle_get_object_details(
     object_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+        if let Some(obj) = try_state!(state_manager.objects.get_object(&bucket_key, &object_key)) {
             let now = chrono::Utc::now().to_rfc3339();
             (
                 axum::http::StatusCode::OK,
@@ -1896,9 +1910,9 @@ pub async fn handle_delete_object(
     object_key: String,
 ) -> impl IntoResponse {
     if let Some(ref state_manager) = state {
-        if state_manager
+        if try_state!(state_manager
             .objects
-            .delete_object(&bucket_key, &object_key)
+            .delete_object(&bucket_key, &object_key))
         {
             (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
         } else {
@@ -1950,14 +1964,12 @@ pub async fn handle_signed_s3_upload_complete(
 
     if let Some(ref state_manager) = state {
         // Return existing object if the mock-s3 PUT already stored it
-        let obj = state_manager
-            .objects
-            .get_object(&bucket_key, &object_key)
-            .unwrap_or_else(|| {
-                state_manager
-                    .objects
-                    .upload_object(bucket_key, object_key, 0, None)
-            });
+        let obj = match try_state!(state_manager.objects.get_object(&bucket_key, &object_key)) {
+            Some(existing) => existing,
+            None => try_state!(state_manager
+                .objects
+                .upload_object(bucket_key, object_key, 0, None)),
+        };
         (axum::http::StatusCode::OK, JsonResponse(json!(obj))).into_response()
     } else {
         (
@@ -1984,9 +1996,9 @@ pub async fn handle_signed_s3_upload_put(
     // Store the object with the real size.
     let size = body.len() as u64;
     if let Some(ref state_manager) = state {
-        state_manager
+        try_state!(state_manager
             .objects
-            .upload_object(bucket_key, object_key, size, None);
+            .upload_object(bucket_key, object_key, size, None));
     }
     (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
 }
@@ -1999,7 +2011,7 @@ pub async fn handle_signed_s3_download(
 ) -> impl IntoResponse {
     let base = format!("http://{}", host);
     if let Some(ref state_manager) = state {
-        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+        if let Some(obj) = try_state!(state_manager.objects.get_object(&bucket_key, &object_key)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -2052,8 +2064,8 @@ pub async fn handle_da_list_engines(state: Option<StateManager>) -> impl IntoRes
 
 pub async fn handle_da_list_appbundles(state: Option<StateManager>) -> impl IntoResponse {
     let data = if let Some(ref sm) = state {
-        sm.da
-            .list_app_bundles()
+        try_state!(sm.da
+            .list_app_bundles())
             .into_iter()
             .map(serde_json::Value::String)
             .collect::<Vec<_>>()
@@ -2088,7 +2100,7 @@ pub async fn handle_da_create_appbundle(
         .to_string();
 
     if let Some(ref sm) = state {
-        let info = sm.da.create_app_bundle(id, engine, desc);
+        let info = try_state!(sm.da.create_app_bundle(id, engine, desc));
         (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2137,7 +2149,7 @@ pub async fn handle_da_delete_appbundle(
     bundle_id: String,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        sm.da.delete_app_bundle(&bundle_id);
+        try_state!(sm.da.delete_app_bundle(&bundle_id));
     }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
@@ -2162,8 +2174,8 @@ pub async fn handle_da_create_appbundle_alias(
 
 pub async fn handle_da_list_activities(state: Option<StateManager>) -> impl IntoResponse {
     let data = if let Some(ref sm) = state {
-        sm.da
-            .list_activities()
+        try_state!(sm.da
+            .list_activities())
             .into_iter()
             .map(serde_json::Value::String)
             .collect::<Vec<_>>()
@@ -2197,7 +2209,7 @@ pub async fn handle_da_create_activity(
         .map(|s| s.to_string());
 
     if let Some(ref sm) = state {
-        let info = sm.da.create_activity(id, engine, desc);
+        let info = try_state!(sm.da.create_activity(id, engine, desc));
         (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2225,7 +2237,7 @@ pub async fn handle_da_delete_activity(
     activity_id: String,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        sm.da.delete_activity(&activity_id);
+        try_state!(sm.da.delete_activity(&activity_id));
     }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
@@ -2259,7 +2271,7 @@ pub async fn handle_da_create_workitem(
         .to_string();
 
     if let Some(ref sm) = state {
-        let info = sm.da.create_work_item(activity_id);
+        let info = try_state!(sm.da.create_work_item(activity_id));
         (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2284,8 +2296,8 @@ pub async fn handle_da_create_workitem(
 
 pub async fn handle_da_list_workitems(state: Option<StateManager>) -> impl IntoResponse {
     let data = if let Some(ref sm) = state {
-        sm.da
-            .list_work_items()
+        try_state!(sm.da
+            .list_work_items())
             .into_iter()
             .map(|w| {
                 json!({
@@ -2315,7 +2327,7 @@ pub async fn handle_da_get_workitem(
     workitem_id: String,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        if let Some(w) = sm.da.get_work_item(&workitem_id) {
+        if let Some(w) = try_state!(sm.da.get_work_item(&workitem_id)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({
@@ -2356,8 +2368,8 @@ pub async fn handle_da_get_workitem(
 
 pub async fn handle_reality_list_photoscenes(state: Option<StateManager>) -> impl IntoResponse {
     let scenes = if let Some(ref sm) = state {
-        sm.reality
-            .list_photoscenes()
+        try_state!(sm.reality
+            .list_photoscenes())
             .into_iter()
             .map(|p| {
                 json!({
@@ -2413,7 +2425,7 @@ pub async fn handle_reality_create_photoscene(
         .to_string();
 
     if let Some(ref sm) = state {
-        let info = sm.reality.create_photoscene(name, scene_type, format);
+        let info = try_state!(sm.reality.create_photoscene(name, scene_type, format));
         (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2477,7 +2489,7 @@ pub async fn handle_reality_process_photoscene(
     photoscene_id: String,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        sm.reality.process_photoscene(&photoscene_id);
+        try_state!(sm.reality.process_photoscene(&photoscene_id));
     }
     (
         axum::http::StatusCode::OK,
@@ -2494,9 +2506,7 @@ pub async fn handle_reality_get_progress(
     state: Option<StateManager>,
     photoscene_id: String,
 ) -> impl IntoResponse {
-    if let Some(ref sm) = state
-        && let Some(p) = sm.reality.get_photoscene(&photoscene_id)
-    {
+    if let Some(ref sm) = state && let Some(p) = try_state!(sm.reality.get_photoscene(&photoscene_id)) {
         return (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2528,9 +2538,7 @@ pub async fn handle_reality_get_result(
     state: Option<StateManager>,
     photoscene_id: String,
 ) -> impl IntoResponse {
-    if let Some(ref sm) = state
-        && let Some(p) = sm.reality.get_photoscene(&photoscene_id)
-    {
+    if let Some(ref sm) = state && let Some(p) = try_state!(sm.reality.get_photoscene(&photoscene_id)) {
         return (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
@@ -2565,7 +2573,7 @@ pub async fn handle_reality_delete_photoscene(
     photoscene_id: String,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        sm.reality.delete_photoscene(&photoscene_id);
+        try_state!(sm.reality.delete_photoscene(&photoscene_id));
     }
     (axum::http::StatusCode::OK, JsonResponse(json!({}))).into_response()
 }
@@ -2579,7 +2587,7 @@ pub async fn handle_signed_s3_download_content(
 ) -> impl IntoResponse {
     // Mock S3 download — return dummy bytes (capped at 10MB to avoid memory issues)
     if let Some(ref state_manager) = state {
-        if let Some(obj) = state_manager.objects.get_object(&bucket_key, &object_key) {
+        if let Some(obj) = try_state!(state_manager.objects.get_object(&bucket_key, &object_key)) {
             let capped_size = std::cmp::min(obj.size, 10 * 1024 * 1024) as usize;
             let dummy_content = vec![0u8; capped_size];
             (
@@ -3435,7 +3443,7 @@ pub async fn handle_get_metadata(state: Option<StateManager>, urn: String) -> im
     let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
-        if let Some(metadata) = state_manager.translations.get_metadata(&decoded_urn) {
+        if let Some(metadata) = try_state!(state_manager.translations.get_metadata(&decoded_urn)) {
             (
                 axum::http::StatusCode::OK,
                 JsonResponse(json!({ "data": metadata })),
@@ -3477,9 +3485,9 @@ pub async fn handle_get_object_tree(
     let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
-        if let Some(tree) = state_manager
+        if let Some(tree) = try_state!(state_manager
             .translations
-            .get_object_tree(&decoded_urn, &guid)
+            .get_object_tree(&decoded_urn, &guid))
         {
             (
                 axum::http::StatusCode::OK,
@@ -3518,9 +3526,9 @@ pub async fn handle_get_properties(
     let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
-        if let Some(props) = state_manager
+        if let Some(props) = try_state!(state_manager
             .translations
-            .get_properties(&decoded_urn, &guid)
+            .get_properties(&decoded_urn, &guid))
         {
             (
                 axum::http::StatusCode::OK,
@@ -3560,9 +3568,9 @@ pub async fn handle_query_properties(
     let decoded_urn = decode_base64_urn(&urn);
 
     if let Some(ref state_manager) = state {
-        if let Some(props) = state_manager
+        if let Some(props) = try_state!(state_manager
             .translations
-            .get_properties(&decoded_urn, &guid)
+            .get_properties(&decoded_urn, &guid))
         {
             // Filter by object IDs if query contains $in operator
             let filtered = if let Some(query) = body.get("query") {
@@ -3651,9 +3659,9 @@ pub async fn handle_copy_object(
         };
 
         if let Some(copied) =
-            state_manager
+            try_state!(state_manager
                 .objects
-                .copy_object(src_bucket, src_key, &dest_bucket, &dest_key)
+                .copy_object(src_bucket, src_key, &dest_bucket, &dest_key))
         {
             (
                 axum::http::StatusCode::OK,

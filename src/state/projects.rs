@@ -49,27 +49,24 @@ impl ProjectState {
     }
 
     /// List all hubs
-    pub fn list_hubs(&self) -> Vec<HubInfo> {
+    pub fn list_hubs(&self) -> crate::error::Result<Vec<HubInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id, name, region FROM hubs")
-            .expect("failed to prepare list hubs");
-        stmt.query_map([], |row| {
+            .prepare("SELECT id, name, region FROM hubs")?;
+        let items = stmt.query_map([], |row| {
             Ok(HubInfo {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 region: row.get(2)?,
             })
-        })
-        .expect("failed to list hubs")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Get a hub by ID
-    pub fn get_hub(&self, hub_id: &str) -> Option<HubInfo> {
+    pub fn get_hub(&self, hub_id: &str) -> crate::error::Result<Option<HubInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, name, region FROM hubs WHERE id = ?1",
             rusqlite::params![hub_id],
             |row| {
@@ -80,32 +77,28 @@ impl ProjectState {
                 })
             },
         )
-        .optional()
-        .expect("failed to get hub")
+        .optional()?)
     }
 
     /// List projects in a hub
-    pub fn list_projects(&self, hub_id: &str) -> Vec<ProjectInfo> {
+    pub fn list_projects(&self, hub_id: &str) -> crate::error::Result<Vec<ProjectInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id, hub_id, name FROM projects WHERE hub_id = ?1")
-            .expect("failed to prepare list projects");
-        stmt.query_map(rusqlite::params![hub_id], |row| {
+            .prepare("SELECT id, hub_id, name FROM projects WHERE hub_id = ?1")?;
+        let items = stmt.query_map(rusqlite::params![hub_id], |row| {
             Ok(ProjectInfo {
                 id: row.get(0)?,
                 hub_id: row.get(1)?,
                 name: row.get(2)?,
             })
-        })
-        .expect("failed to list projects")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 
     /// Get a project by ID
-    pub fn get_project(&self, project_id: &str) -> Option<ProjectInfo> {
+    pub fn get_project(&self, project_id: &str) -> crate::error::Result<Option<ProjectInfo>> {
         let conn = self.db.conn();
-        conn.query_row(
+        Ok(conn.query_row(
             "SELECT id, hub_id, name FROM projects WHERE id = ?1",
             rusqlite::params![project_id],
             |row| {
@@ -116,25 +109,21 @@ impl ProjectState {
                 })
             },
         )
-        .optional()
-        .expect("failed to get project")
+        .optional()?)
     }
 
     /// List all projects across all hubs
-    pub fn list_all_projects(&self) -> Vec<ProjectInfo> {
+    pub fn list_all_projects(&self) -> crate::error::Result<Vec<ProjectInfo>> {
         let conn = self.db.conn();
         let mut stmt = conn
-            .prepare("SELECT id, hub_id, name FROM projects")
-            .expect("failed to prepare list all projects");
-        stmt.query_map([], |row| {
+            .prepare("SELECT id, hub_id, name FROM projects")?;
+        let items = stmt.query_map([], |row| {
             Ok(ProjectInfo {
                 id: row.get(0)?,
                 hub_id: row.get(1)?,
                 name: row.get(2)?,
             })
-        })
-        .expect("failed to list all projects")
-        .filter_map(|r| r.ok())
-        .collect()
+        })?;
+        Ok(items.filter_map(|r| r.ok()).collect())
     }
 }

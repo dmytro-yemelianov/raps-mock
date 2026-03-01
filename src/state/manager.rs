@@ -2,7 +2,8 @@
 // Copyright 2024-2025 Dmytro Yemelianov
 
 use crate::state::{
-    acc, auth, buckets, da, db, issues, objects, projects, reality, translations, webhooks,
+    acc, auth, buckets, da, db, folders, issues, items, objects, projects, reality, translations,
+    webhooks,
 };
 use std::sync::Arc;
 
@@ -29,6 +30,10 @@ pub struct StateManager {
     pub reality: Arc<reality::RealityState>,
     /// ACC (RFIs, Assets, Submittals, Checklists) storage
     pub acc: Arc<acc::AccState>,
+    /// Data Management folders storage
+    pub folders: Arc<folders::FolderState>,
+    /// Data Management items storage
+    pub items: Arc<items::ItemState>,
 }
 
 impl StateManager {
@@ -55,7 +60,9 @@ impl StateManager {
             webhooks: Arc::new(webhooks::WebhooksState::new(db.clone())),
             da: Arc::new(da::DaState::new(db.clone())),
             reality: Arc::new(reality::RealityState::new(db.clone())),
-            acc: Arc::new(acc::AccState::new(db)),
+            acc: Arc::new(acc::AccState::new(db.clone())),
+            folders: Arc::new(folders::FolderState::new(db.clone())),
+            items: Arc::new(items::ItemState::new(db)),
         }
     }
 }

@@ -2994,46 +2994,79 @@ pub async fn handle_hq_list_companies(
         .into_response()
 }
 
+// ---- Data Management: URN helpers ----
+
+/// Strip the `urn:adsk.wipprod:fs.folder:co.` prefix if present, returning the raw ID.
+fn strip_folder_urn(urn: &str) -> &str {
+    urn.strip_prefix("urn:adsk.wipprod:fs.folder:co.")
+        .unwrap_or(urn)
+}
+
+/// Strip the `urn:adsk.wipprod:dm.lineage:` prefix if present, returning the raw ID.
+fn strip_item_urn(urn: &str) -> &str {
+    urn.strip_prefix("urn:adsk.wipprod:dm.lineage:")
+        .unwrap_or(urn)
+}
+
 // ---- Data Management: Folders ----
 
 pub async fn handle_dm_list_folder_contents(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _folder_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    folder_id: String,
 ) -> impl IntoResponse {
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": []
+            })),
+        )
+            .into_response();
+    };
+
+    let child_folders = try_state!(sm.folders.list_child_folders(&project_id, &folder_id));
+    let items = try_state!(sm.items.list_items_in_folder(&project_id, &folder_id));
+
+    let mut data: Vec<Value> = Vec::new();
+    for f in child_folders {
+        data.push(json!({
+            "type": "folders",
+            "id": format!("urn:adsk.wipprod:fs.folder:co.{}", f.id),
+            "attributes": {
+                "name": f.name,
+                "displayName": f.display_name,
+                "createTime": f.created_at,
+                "lastModifiedTime": f.last_modified_time,
+            }
+        }));
+    }
+    for i in items {
+        data.push(json!({
+            "type": "items",
+            "id": format!("urn:adsk.wipprod:dm.lineage:{}", i.id),
+            "attributes": {
+                "displayName": i.display_name,
+                "createTime": i.created_at,
+                "lastModifiedTime": i.last_modified_time,
+            }
+        }));
+    }
+
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "jsonapi": { "version": "1.0" },
-            "data": [
-                {
-                    "type": "folders",
-                    "id": "urn:adsk.wipprod:fs.folder:co.mock-subfolder-001",
-                    "attributes": {
-                        "name": "Subfolder",
-                        "displayName": "Subfolder",
-                        "createTime": "2026-01-01T00:00:00Z",
-                        "lastModifiedTime": "2026-01-15T00:00:00Z"
-                    }
-                },
-                {
-                    "type": "items",
-                    "id": "urn:adsk.wipprod:dm.lineage:mock-item-001",
-                    "attributes": {
-                        "displayName": "Drawing.dwg",
-                        "createTime": "2026-01-01T00:00:00Z",
-                        "lastModifiedTime": "2026-01-10T00:00:00Z"
-                    }
-                }
-            ]
+            "data": data
         })),
     )
         .into_response()
 }
 
 pub async fn handle_dm_create_folder(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     body: Value,
 ) -> impl IntoResponse {
     let name = body
@@ -3041,18 +3074,46 @@ pub async fn handle_dm_create_folder(
         .and_then(|d| d.get("attributes"))
         .and_then(|a| a.get("name"))
         .and_then(|v| v.as_str())
-        .unwrap_or("New Folder");
+        .unwrap_or("New Folder")
+        .to_string();
+
+    let parent = body
+        .get("data")
+        .and_then(|d| d.get("relationships"))
+        .and_then(|r| r.get("parent"))
+        .and_then(|p| p.get("data"))
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| strip_folder_urn(s).to_string());
+
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "folders",
+                    "id": format!("urn:adsk.wipprod:fs.folder:co.{}", uuid::Uuid::new_v4()),
+                    "attributes": { "name": name, "displayName": name, "createTime": "2026-01-01T00:00:00Z" }
+                }
+            })),
+        )
+            .into_response();
+    };
+
+    let folder = try_state!(sm.folders.create_folder(project_id, parent, name));
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
             "jsonapi": { "version": "1.0" },
             "data": {
                 "type": "folders",
-                "id": format!("urn:adsk.wipprod:fs.folder:co.{}", uuid::Uuid::new_v4()),
+                "id": format!("urn:adsk.wipprod:fs.folder:co.{}", folder.id),
                 "attributes": {
-                    "name": name,
-                    "displayName": name,
-                    "createTime": "2026-01-01T00:00:00Z"
+                    "name": folder.name,
+                    "displayName": folder.display_name,
+                    "createTime": folder.created_at,
+                    "lastModifiedTime": folder.last_modified_time,
                 }
             }
         })),
@@ -3061,65 +3122,116 @@ pub async fn handle_dm_create_folder(
 }
 
 pub async fn handle_dm_get_folder(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     folder_id: String,
 ) -> impl IntoResponse {
-    (
-        axum::http::StatusCode::OK,
-        JsonResponse(json!({
-            "jsonapi": { "version": "1.0" },
-            "data": {
-                "type": "folders",
-                "id": folder_id,
-                "attributes": {
-                    "name": "Plans",
-                    "displayName": "Plans",
-                    "createTime": "2026-01-01T00:00:00Z",
-                    "lastModifiedTime": "2026-01-15T00:00:00Z"
+    let raw_id = strip_folder_urn(&folder_id);
+
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "folders",
+                    "id": folder_id,
+                    "attributes": { "name": "Plans", "displayName": "Plans", "createTime": "2026-01-01T00:00:00Z" }
                 }
-            }
-        })),
-    )
-        .into_response()
+            })),
+        )
+            .into_response();
+    };
+
+    let folder = try_state!(sm.folders.get_folder(&project_id, raw_id));
+    match folder {
+        Some(f) => (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "folders",
+                    "id": format!("urn:adsk.wipprod:fs.folder:co.{}", f.id),
+                    "attributes": {
+                        "name": f.name,
+                        "displayName": f.display_name,
+                        "createTime": f.created_at,
+                        "lastModifiedTime": f.last_modified_time,
+                    }
+                }
+            })),
+        )
+            .into_response(),
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({"jsonapi": {"version": "1.0"}, "errors": [{"status": "404", "detail": "Folder not found"}]})),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn handle_dm_update_folder(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     folder_id: String,
     body: Value,
 ) -> impl IntoResponse {
+    let raw_id = strip_folder_urn(&folder_id);
     let name = body
         .get("data")
         .and_then(|d| d.get("attributes"))
         .and_then(|a| a.get("name"))
         .and_then(|v| v.as_str())
-        .unwrap_or("Updated Folder");
-    (
-        axum::http::StatusCode::OK,
-        JsonResponse(json!({
-            "jsonapi": { "version": "1.0" },
-            "data": {
-                "type": "folders",
-                "id": folder_id,
-                "attributes": {
-                    "name": name,
-                    "displayName": name,
-                    "createTime": "2026-01-01T00:00:00Z",
-                    "lastModifiedTime": "2026-02-01T00:00:00Z"
+        .map(|s| s.to_string());
+
+    let Some(sm) = state else {
+        let display = name.as_deref().unwrap_or("Updated Folder");
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": { "type": "folders", "id": folder_id, "attributes": { "name": display, "displayName": display } }
+            })),
+        )
+            .into_response();
+    };
+
+    let folder = try_state!(sm.folders.update_folder(&project_id, raw_id, name));
+    match folder {
+        Some(f) => (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "folders",
+                    "id": format!("urn:adsk.wipprod:fs.folder:co.{}", f.id),
+                    "attributes": {
+                        "name": f.name,
+                        "displayName": f.display_name,
+                        "createTime": f.created_at,
+                        "lastModifiedTime": f.last_modified_time,
+                    }
                 }
-            }
-        })),
-    )
-        .into_response()
+            })),
+        )
+            .into_response(),
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({"jsonapi": {"version": "1.0"}, "errors": [{"status": "404", "detail": "Folder not found"}]})),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn handle_dm_delete_folder(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _folder_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    folder_id: String,
 ) -> impl IntoResponse {
+    let raw_id = strip_folder_urn(&folder_id);
+    if let Some(sm) = state {
+        try_state!(sm.folders.delete_folder(&project_id, raw_id));
+    }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
 
@@ -3165,33 +3277,42 @@ pub async fn handle_dm_batch_update_folder_permissions(
 }
 
 pub async fn handle_dm_list_top_folders(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
 ) -> impl IntoResponse {
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": []
+            })),
+        )
+            .into_response();
+    };
+
+    let folders = try_state!(sm.folders.list_top_folders(&project_id));
+    let data: Vec<Value> = folders
+        .into_iter()
+        .map(|f| {
+            json!({
+                "type": "folders",
+                "id": format!("urn:adsk.wipprod:fs.folder:co.{}", f.id),
+                "attributes": {
+                    "name": f.name,
+                    "displayName": f.display_name,
+                    "createTime": f.created_at,
+                    "lastModifiedTime": f.last_modified_time,
+                }
+            })
+        })
+        .collect();
+
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "jsonapi": { "version": "1.0" },
-            "data": [
-                {
-                    "type": "folders",
-                    "id": "urn:adsk.wipprod:fs.folder:co.mock-top-folder-001",
-                    "attributes": {
-                        "name": "Project Files",
-                        "displayName": "Project Files",
-                        "createTime": "2026-01-01T00:00:00Z"
-                    }
-                },
-                {
-                    "type": "folders",
-                    "id": "urn:adsk.wipprod:fs.folder:co.mock-top-folder-002",
-                    "attributes": {
-                        "name": "Plans",
-                        "displayName": "Plans",
-                        "createTime": "2026-01-01T00:00:00Z"
-                    }
-                }
-            ]
+            "data": data
         })),
     )
         .into_response()
@@ -3200,26 +3321,55 @@ pub async fn handle_dm_list_top_folders(
 // ---- Data Management: Items ----
 
 pub async fn handle_dm_create_item(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body
+    let display_name = body
         .get("data")
         .and_then(|d| d.get("attributes"))
         .and_then(|a| a.get("displayName"))
         .and_then(|v| v.as_str())
-        .unwrap_or("NewFile.dwg");
+        .unwrap_or("NewFile.dwg")
+        .to_string();
+
+    let folder_id = body
+        .get("data")
+        .and_then(|d| d.get("relationships"))
+        .and_then(|r| r.get("parent"))
+        .and_then(|p| p.get("data"))
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| strip_folder_urn(s).to_string())
+        .unwrap_or_default();
+
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::CREATED,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "items",
+                    "id": format!("urn:adsk.wipprod:dm.lineage:{}", uuid::Uuid::new_v4()),
+                    "attributes": { "displayName": display_name, "createTime": "2026-01-01T00:00:00Z" }
+                }
+            })),
+        )
+            .into_response();
+    };
+
+    let item = try_state!(sm.items.create_item(project_id, folder_id, display_name));
     (
         axum::http::StatusCode::CREATED,
         JsonResponse(json!({
             "jsonapi": { "version": "1.0" },
             "data": {
                 "type": "items",
-                "id": format!("urn:adsk.wipprod:dm.lineage:{}", uuid::Uuid::new_v4()),
+                "id": format!("urn:adsk.wipprod:dm.lineage:{}", item.id),
                 "attributes": {
-                    "displayName": name,
-                    "createTime": "2026-01-01T00:00:00Z"
+                    "displayName": item.display_name,
+                    "createTime": item.created_at,
+                    "lastModifiedTime": item.last_modified_time,
                 }
             }
         })),
@@ -3228,88 +3378,157 @@ pub async fn handle_dm_create_item(
 }
 
 pub async fn handle_dm_get_item(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     item_id: String,
 ) -> impl IntoResponse {
-    (
-        axum::http::StatusCode::OK,
-        JsonResponse(json!({
-            "jsonapi": { "version": "1.0" },
-            "data": {
-                "type": "items",
-                "id": item_id,
-                "attributes": {
-                    "displayName": "MockFile.dwg",
-                    "createTime": "2026-01-01T00:00:00Z",
-                    "lastModifiedTime": "2026-01-15T00:00:00Z"
+    let raw_id = strip_item_urn(&item_id);
+
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "items", "id": item_id,
+                    "attributes": { "displayName": "MockFile.dwg", "createTime": "2026-01-01T00:00:00Z" }
                 }
-            }
-        })),
-    )
-        .into_response()
+            })),
+        )
+            .into_response();
+    };
+
+    let item = try_state!(sm.items.get_item(&project_id, raw_id));
+    match item {
+        Some(i) => (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "items",
+                    "id": format!("urn:adsk.wipprod:dm.lineage:{}", i.id),
+                    "attributes": {
+                        "displayName": i.display_name,
+                        "createTime": i.created_at,
+                        "lastModifiedTime": i.last_modified_time,
+                    }
+                }
+            })),
+        )
+            .into_response(),
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({"jsonapi": {"version": "1.0"}, "errors": [{"status": "404", "detail": "Item not found"}]})),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn handle_dm_update_item(
-    _state: Option<StateManager>,
-    _project_id: String,
+    state: Option<StateManager>,
+    project_id: String,
     item_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let name = body
+    let raw_id = strip_item_urn(&item_id);
+    let display_name = body
         .get("data")
         .and_then(|d| d.get("attributes"))
         .and_then(|a| a.get("displayName"))
         .and_then(|v| v.as_str())
-        .unwrap_or("UpdatedFile.dwg");
-    (
-        axum::http::StatusCode::OK,
-        JsonResponse(json!({
-            "jsonapi": { "version": "1.0" },
-            "data": {
-                "type": "items",
-                "id": item_id,
-                "attributes": {
-                    "displayName": name,
-                    "createTime": "2026-01-01T00:00:00Z",
-                    "lastModifiedTime": "2026-02-01T00:00:00Z"
+        .map(|s| s.to_string());
+
+    let Some(sm) = state else {
+        let n = display_name.as_deref().unwrap_or("UpdatedFile.dwg");
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": { "type": "items", "id": item_id, "attributes": { "displayName": n } }
+            })),
+        )
+            .into_response();
+    };
+
+    let item = try_state!(sm.items.update_item(&project_id, raw_id, display_name));
+    match item {
+        Some(i) => (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": {
+                    "type": "items",
+                    "id": format!("urn:adsk.wipprod:dm.lineage:{}", i.id),
+                    "attributes": {
+                        "displayName": i.display_name,
+                        "createTime": i.created_at,
+                        "lastModifiedTime": i.last_modified_time,
+                    }
                 }
-            }
-        })),
-    )
-        .into_response()
+            })),
+        )
+            .into_response(),
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            JsonResponse(json!({"jsonapi": {"version": "1.0"}, "errors": [{"status": "404", "detail": "Item not found"}]})),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn handle_dm_delete_item(
-    _state: Option<StateManager>,
-    _project_id: String,
-    _item_id: String,
+    state: Option<StateManager>,
+    project_id: String,
+    item_id: String,
 ) -> impl IntoResponse {
+    let raw_id = strip_item_urn(&item_id);
+    if let Some(sm) = state {
+        try_state!(sm.items.delete_item(&project_id, raw_id));
+    }
     (axum::http::StatusCode::NO_CONTENT, "").into_response()
 }
 
 pub async fn handle_dm_list_item_versions(
-    _state: Option<StateManager>,
+    state: Option<StateManager>,
     _project_id: String,
-    _item_id: String,
+    item_id: String,
 ) -> impl IntoResponse {
+    let raw_id = strip_item_urn(&item_id);
+
+    let Some(sm) = state else {
+        return (
+            axum::http::StatusCode::OK,
+            JsonResponse(json!({
+                "jsonapi": { "version": "1.0" },
+                "data": []
+            })),
+        )
+            .into_response();
+    };
+
+    let versions = try_state!(sm.items.list_versions(raw_id));
+    let data: Vec<Value> = versions
+        .into_iter()
+        .map(|v| {
+            json!({
+                "type": "versions",
+                "id": format!("urn:adsk.wipprod:fs.file:vf.{}", v.id),
+                "attributes": {
+                    "name": v.display_name,
+                    "displayName": v.display_name,
+                    "versionNumber": v.version_number,
+                    "createTime": v.created_at,
+                    "storageSize": v.storage_size,
+                }
+            })
+        })
+        .collect();
+
     (
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "jsonapi": { "version": "1.0" },
-            "data": [
-                {
-                    "type": "versions",
-                    "id": "urn:adsk.wipprod:fs.file:vf.mock-version-001",
-                    "attributes": {
-                        "name": "MockFile.dwg",
-                        "displayName": "MockFile.dwg",
-                        "versionNumber": 1,
-                        "createTime": "2026-01-01T00:00:00Z",
-                        "storageSize": 1024000
-                    }
-                }
-            ]
+            "data": data
         })),
     )
         .into_response()

@@ -221,4 +221,40 @@ CREATE TABLE IF NOT EXISTS checklists (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_checklists_project_id ON checklists(project_id);
+
+-- Data Management: Folders
+CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    parent_folder_id TEXT,
+    name TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_modified_time TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_folders_project_id ON folders(project_id);
+CREATE INDEX IF NOT EXISTS idx_folders_parent_id ON folders(parent_folder_id);
+
+-- Data Management: Items
+CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    folder_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_modified_time TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_items_project_id ON items(project_id);
+CREATE INDEX IF NOT EXISTS idx_items_folder_id ON items(folder_id);
+
+-- Data Management: Item Versions
+CREATE TABLE IF NOT EXISTS item_versions (
+    id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    storage_size INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_versions_item_id ON item_versions(item_id);
 ";

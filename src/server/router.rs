@@ -3,7 +3,7 @@
 
 use axum::{
     Router,
-    extract::{Json, Path},
+    extract::{Json, Path, Query},
     routing::{delete, get, patch, post, put},
 };
 use serde_json::Value;
@@ -1180,9 +1180,9 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/accounts/:account_id/users",
         HttpMethod::Get,
-        get(move |Path(account_id): Path<String>| {
+        get(move |Path(account_id): Path<String>, Query(pagination): Query<routes::PaginationQuery>| {
             let state = s.clone();
-            async move { routes::handle_admin_list_users(state, account_id).await }
+            async move { routes::handle_admin_list_users(state, account_id, pagination).await }
         }),
     );
 
@@ -1255,9 +1255,9 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/accounts/:account_id/projects",
         HttpMethod::Get,
-        get(move |Path(account_id): Path<String>| {
+        get(move |Path(account_id): Path<String>, Query(pagination): Query<routes::PaginationQuery>| {
             let state = s.clone();
-            async move { routes::handle_admin_list_projects(state, account_id).await }
+            async move { routes::handle_admin_list_projects(state, account_id, pagination).await }
         }),
     );
 

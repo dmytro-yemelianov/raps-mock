@@ -127,14 +127,24 @@ impl AuthState {
     pub fn validate_token(&self, token: &str) -> crate::error::Result<bool> {
         let now = Self::current_timestamp();
         let conn = self.db.conn();
-        Ok(conn.query_row(
+        let result = conn.query_row(
             "SELECT expires_at FROM tokens WHERE access_token = ?1",
             rusqlite::params![token],
             |row| row.get::<_, i64>(0),
         )
-        .optional()?
-        .map(|expires_at| (expires_at as u64) > now)
-        .unwrap_or(false))
+        .optional()?;
+
+        match result {
+            Some(expires_at) => {
+                let valid = (expires_at as u64) > now;
+                tracing::info!(token, expires_at, now, valid, "Token validation check");
+                Ok(valid)
+            }
+            None => {
+                tracing::info!(token, "Token not found in database");
+                Ok(false)
+            }
+        }
     }
 
     /// Revoke a token

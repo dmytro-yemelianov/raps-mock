@@ -32,19 +32,26 @@ pub async fn auth_middleware(
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "));
 
+    println!("DEBUG: auth_middleware path={} token={:?}", path, token);
+    eprintln!("DEBUG: auth_middleware path={} token={:?}", path, token);
+
     if let Some(token) = token {
         // Validate token against state if available
         if let Some(Extension(ref state_manager)) = state {
+            tracing::info!(token, "Validating token against state");
             if state_manager.auth.validate_token(token).unwrap_or(false) {
                 return next.run(request).await;
             }
             // Token validation failed
+            tracing::warn!(token, "Token validation failed in middleware");
             return unauthorized_response("The access token provided is invalid or has expired.");
         }
         // No state manager (stateless mode) - accept any Bearer token
+        tracing::info!(token, "Stateless mode, accepting token");
         return next.run(request).await;
     }
 
+    tracing::warn!(path, "Missing or malformed Authorization header");
     // Return 401 if no valid token
     unauthorized_response("Missing or malformed Authorization header. Expected: Bearer <token>")
 }

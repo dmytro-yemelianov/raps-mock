@@ -8,9 +8,25 @@
 
 use axum::response::{IntoResponse, Json as JsonResponse};
 use base64::Engine as _; // needed for .decode() method on engine instances
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::state::StateManager;
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+pub struct PaginationQuery {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+impl Default for PaginationQuery {
+    fn default() -> Self {
+        Self {
+            limit: Some(50),
+            offset: Some(0),
+        }
+    }
+}
 
 /// Unwrap a `crate::error::Result`, returning HTTP 500 on error.
 macro_rules! try_state {
@@ -18,8 +34,12 @@ macro_rules! try_state {
         match $expr {
             Ok(v) => v,
             Err(e) => {
+                let status = match &e {
+                    crate::error::MockError::NotFound(_) => axum::http::StatusCode::NOT_FOUND,
+                    _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                };
                 return (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    status,
                     JsonResponse(serde_json::json!({"error": format!("Internal error: {}", e)})),
                 )
                     .into_response();
@@ -2662,12 +2682,18 @@ pub async fn handle_signed_s3_download_content(
 pub async fn handle_admin_list_users(
     state: Option<StateManager>,
     account_id: String,
+    pagination: PaginationQuery,
 ) -> impl IntoResponse {
+    let limit = pagination.limit.unwrap_or(50);
+    let offset = pagination.offset.unwrap_or(0);
+
     if let Some(ref sm) = state {
         let users = try_state!(sm.admin.list_users(&account_id));
-        let total = users.len() as i32;
+        let total = users.len();
         let results: Vec<Value> = users
             .into_iter()
+            .skip(offset)
+            .take(limit)
             .map(|u| {
                 json!({
                     "id": u.id,
@@ -2682,7 +2708,7 @@ pub async fn handle_admin_list_users(
             axum::http::StatusCode::OK,
             JsonResponse(json!({
                 "results": results,
-                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+                "pagination": { "limit": limit, "offset": offset, "totalResults": total }
             })),
         )
             .into_response();
@@ -2706,7 +2732,7 @@ pub async fn handle_admin_list_users(
                     "role": "project_user"
                 }
             ],
-            "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
+            "pagination": { "limit": limit, "offset": offset, "totalResults": 2 }
         })),
     )
         .into_response()
@@ -2905,19 +2931,25 @@ pub async fn handle_admin_import_users(
 pub async fn handle_admin_list_projects(
     state: Option<StateManager>,
     account_id: String,
+    pagination: PaginationQuery,
 ) -> impl IntoResponse {
+    let limit = pagination.limit.unwrap_or(50);
+    let offset = pagination.offset.unwrap_or(0);
+
     if let Some(ref sm) = state {
         let projects = try_state!(sm.admin.list_projects(&account_id));
-        let total = projects.len() as i32;
+        let total = projects.len();
         let results: Vec<Value> = projects
             .into_iter()
+            .skip(offset)
+            .take(limit)
             .map(|p| json!({ "id": p.id, "name": p.name, "status": p.status, "accountId": p.account_id }))
             .collect();
         return (
             axum::http::StatusCode::OK,
             JsonResponse(json!({
                 "results": results,
-                "pagination": { "limit": 50, "offset": 0, "totalResults": total }
+                "pagination": { "limit": limit, "offset": offset, "totalResults": total }
             })),
         )
             .into_response();
@@ -2929,7 +2961,7 @@ pub async fn handle_admin_list_projects(
                 { "id": "proj-001", "name": "Mock Project Alpha", "status": "active", "accountId": "mock-account-001" },
                 { "id": "proj-002", "name": "Mock Project Beta", "status": "active", "accountId": "mock-account-001" }
             ],
-            "pagination": { "limit": 50, "offset": 0, "totalResults": 2 }
+            "pagination": { "limit": limit, "offset": offset, "totalResults": 2 }
         })),
     )
         .into_response()

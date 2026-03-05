@@ -23,6 +23,9 @@ pub enum MockError {
 
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
+
+    #[error("Resource not found: {0}")]
+    NotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, MockError>;

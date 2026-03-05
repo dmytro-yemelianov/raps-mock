@@ -280,6 +280,17 @@ impl AdminState {
 
     pub fn list_projects(&self, account_id: &str) -> crate::error::Result<Vec<AdminProject>> {
         let conn = self.db.conn();
+        
+        let count: i64 = conn.query_row(
+            "SELECT count(*) FROM admin_projects WHERE account_id = ?1",
+            rusqlite::params![account_id],
+            |row| row.get(0),
+        )?;
+        
+        if count == 0 && account_id != "mock-account-001" {
+            return Err(crate::error::MockError::NotFound(format!("Account {} not found", account_id)));
+        }
+
         let mut stmt = conn.prepare(
             "SELECT id, account_id, name, status FROM admin_projects WHERE account_id = ?1",
         )?;

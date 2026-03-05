@@ -15,6 +15,8 @@ pub mod openapi;
 pub mod server;
 pub mod state;
 pub mod testing;
+pub mod trace;
+pub use trace::TraceRecorder;
 
 pub use config::{MockMode, MockServerConfig};
 pub use error::{MockError, Result};

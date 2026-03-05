@@ -159,7 +159,9 @@ pub async fn handle_create_bucket(state: Option<StateManager>, body: Value) -> i
             axum::http::StatusCode::OK,
             JsonResponse(json!({
                 "bucketKey": "mock-bucket",
+                "bucketOwner": "mock-owner",
                 "createdDate": chrono::Utc::now().timestamp_millis(),
+                "permissions": [{"authId": "mock-owner", "access": "full"}],
                 "policyKey": "transient"
             })),
         )
@@ -1748,13 +1750,25 @@ pub async fn handle_create_webhook(
     event: String,
     body: Value,
 ) -> impl IntoResponse {
-    if let Some(ref state_manager) = state {
-        let callback_url = body
-            .get("callbackUrl")
-            .and_then(|v| v.as_str())
-            .unwrap_or("https://example.com/webhook")
-            .to_string();
+    let callback_url = match body
+        .get("callbackUrl")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(url) => url.to_string(),
+        None => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                JsonResponse(json!({
+                    "reason": "callbackUrl is required"
+                })),
+            )
+                .into_response();
+        }
+    };
 
+    if let Some(ref state_manager) = state {
         let scope = crate::state::webhooks::WebhookScope {
             folder: body
                 .get("scope")
@@ -1795,8 +1809,10 @@ pub async fn handle_create_webhook(
             axum::http::StatusCode::CREATED,
             JsonResponse(json!({
                 "hookId": "mock-hook-id",
+                "callbackUrl": callback_url,
                 "event": event,
                 "system": system,
+                "createdDate": chrono::Utc::now().to_rfc3339(),
                 "status": "active"
             })),
         )

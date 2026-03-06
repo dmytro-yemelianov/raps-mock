@@ -1361,9 +1361,9 @@ fn register_hardcoded_routes(
         router,
         "/construction/admin/v1/projects/:project_id/users",
         HttpMethod::Get,
-        get(move |Path(project_id): Path<String>| {
+        get(move |Path(project_id): Path<String>, Query(params): Query<std::collections::HashMap<String, String>>| {
             let state = s.clone();
-            async move { routes::handle_admin_list_project_users_v2(state, project_id).await }
+            async move { routes::handle_admin_list_project_users_v2(state, project_id, params).await }
         }),
     );
 

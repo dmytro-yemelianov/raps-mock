@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Json as JsonResponse};
 use base64::Engine as _; // needed for .decode() method on engine instances
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 use crate::state::StateManager;
 
@@ -3064,7 +3065,7 @@ pub async fn handle_admin_list_project_users(
         let total = users.len() as i32;
         let results: Vec<Value> = users
             .into_iter()
-            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "role": u.role_id }))
+            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "roleIds": [u.role_id] }))
             .collect();
         return (
             axum::http::StatusCode::OK,
@@ -3079,7 +3080,7 @@ pub async fn handle_admin_list_project_users(
         axum::http::StatusCode::OK,
         JsonResponse(json!({
             "results": [
-                { "id": "user-001", "email": "alice@example.com", "name": "Alice Johnson", "status": "active", "role": "project_admin" }
+                { "id": "user-001", "email": "alice@example.com", "name": "Alice Johnson", "status": "active", "roleIds": ["project_admin"] }
             ],
             "pagination": { "limit": 50, "offset": 0, "totalResults": 1 }
         })),
@@ -3135,7 +3136,7 @@ pub async fn handle_admin_get_project_user(
                 "name": pu.name,
                 "status": pu.status,
                 "projectId": pu.project_id,
-                "roleId": pu.role_id
+                "roleIds": [pu.role_id]
             })),
         )
             .into_response();
@@ -3159,7 +3160,13 @@ pub async fn handle_admin_add_project_user(
     let user_id = body.get("userId").and_then(|v| v.as_str()).unwrap_or("mock-user-id").to_string();
     let email = body.get("email").and_then(|v| v.as_str()).unwrap_or("user@example.com").to_string();
     let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("Mock User").to_string();
-    let role_id = body.get("roleId").and_then(|v| v.as_str()).unwrap_or("role-default").to_string();
+    // ACC API sends roleIds as an array; fall back to single "role-default" if absent
+    let role_id = body.get("roleIds")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .unwrap_or("role-default")
+        .to_string();
     if let Some(ref sm) = state {
         let pu = try_state!(sm.admin.add_project_user(&project_id, user_id, email, name, role_id));
         return (
@@ -3170,7 +3177,7 @@ pub async fn handle_admin_add_project_user(
                 "name": pu.name,
                 "status": pu.status,
                 "projectId": pu.project_id,
-                "roleId": pu.role_id
+                "roleIds": [pu.role_id]
             })),
         )
             .into_response();
@@ -3183,7 +3190,7 @@ pub async fn handle_admin_add_project_user(
             "name": "Mock User",
             "status": "active",
             "projectId": project_id,
-            "roleId": "role-default"
+            "roleIds": ["role-default"]
         })),
     )
         .into_response()
@@ -3192,13 +3199,18 @@ pub async fn handle_admin_add_project_user(
 pub async fn handle_admin_list_project_users_v2(
     state: Option<StateManager>,
     project_id: String,
+    query_params: HashMap<String, String>,
 ) -> impl IntoResponse {
     if let Some(ref sm) = state {
-        let users = try_state!(sm.admin.list_project_users(&project_id));
+        let mut users = try_state!(sm.admin.list_project_users(&project_id));
+        // Support filter[email] query parameter (used by find_project_user_by_email)
+        if let Some(email_filter) = query_params.get("filter[email]") {
+            users.retain(|u| u.email == *email_filter);
+        }
         let total = users.len() as i32;
         let results: Vec<Value> = users
             .into_iter()
-            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "projectId": u.project_id, "roleId": u.role_id }))
+            .map(|u| json!({ "id": u.id, "email": u.email, "name": u.name, "status": u.status, "projectId": u.project_id, "roleIds": [u.role_id] }))
             .collect();
         return (
             axum::http::StatusCode::OK,
@@ -3225,7 +3237,12 @@ pub async fn handle_admin_update_project_user(
     user_id: String,
     body: Value,
 ) -> impl IntoResponse {
-    let role_id = body.get("roleId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    // ACC API sends roleIds as an array; take the first element as the stored role
+    let role_id = body.get("roleIds")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     if let Some(ref sm) = state
         && let Ok(Some(pu)) = sm.admin.update_project_user(&project_id, &user_id, role_id.clone())
     {
@@ -3236,7 +3253,7 @@ pub async fn handle_admin_update_project_user(
                 "email": pu.email,
                 "status": pu.status,
                 "projectId": pu.project_id,
-                "roleId": pu.role_id
+                "roleIds": [pu.role_id]
             })),
         )
             .into_response();
@@ -3248,7 +3265,7 @@ pub async fn handle_admin_update_project_user(
             "email": "user@example.com",
             "status": "active",
             "projectId": project_id,
-            "roleId": role_id.unwrap_or_else(|| "role-default".to_string())
+            "roleIds": [role_id.unwrap_or_else(|| "role-default".to_string())]
         })),
     )
         .into_response()

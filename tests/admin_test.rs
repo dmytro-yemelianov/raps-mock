@@ -233,14 +233,14 @@ async fn test_project_user_crud() {
             server.url, project
         ))
         .bearer_auth(&token)
-        .json(&json!({"userId": "user-new-001", "email": "new@example.com", "name": "New Guy", "roleId": "role-viewer"}))
+        .json(&json!({"userId": "user-new-001", "email": "new@example.com", "name": "New Guy", "roleIds": ["role-viewer"]}))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), 201);
     let pu: Value = resp.json().await.unwrap();
     assert_eq!(pu["id"], "user-new-001");
-    assert_eq!(pu["roleId"], "role-viewer");
+    assert_eq!(pu["roleIds"][0], "role-viewer");
 
     // Get project user
     let resp = client
@@ -261,13 +261,13 @@ async fn test_project_user_crud() {
             server.url, project
         ))
         .bearer_auth(&token)
-        .json(&json!({"roleId": "role-editor"}))
+        .json(&json!({"roleIds": ["role-editor"]}))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
     let updated: Value = resp.json().await.unwrap();
-    assert_eq!(updated["roleId"], "role-editor");
+    assert_eq!(updated["roleIds"][0], "role-editor");
 
     // Delete project user
     let resp = client
